@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a source-checkout CLI for authenticated local MCP status, accounts, cached mail and explicitly confirmed read/archive requests. Preserve pending proposals, support JSON output, reject redirects and keep tokens out of arguments and saved configuration.
+
 - Add customizable floating notifications in Settings: separate new-mail and action switches, position, duration, preview and reset. Confirm Snooze with its return time, Return to inbox, Archive and Trash; preserve confirmed outcomes when inbox refresh fails. Errors and uncertain-send warnings remain until dismissed.
 
 - Keep the release-validator test loader as a file URL so Node can import it on Windows.

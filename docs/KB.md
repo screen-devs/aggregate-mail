@@ -1,5 +1,15 @@
 # Repository knowledge
 
+## CLI
+
+[CLI setup and commands](cli.md) use `scripts/emc2.mjs` through Node 24 or
+`npm run cli --`. The npm bin is `emc2`, available after optional `npm link`.
+The CLI uses the existing authenticated loopback MCP transport and discovers
+tools before calling them. It does not read the store or app keys. Read is
+non-mutating; explicit mark-read/archive requests preserve the server result,
+including V2 pending proposals. No approval or sending command is exposed.
+Run `node --test scripts/emc2.test.mjs` for the isolated synthetic CLI checks.
+
 ## Contribution guides
 
 [AGENTS.md](../AGENTS.md) defines the project map, change boundaries, mail privacy safeguards and verification requirements for agents. [CONTRIBUTING.md](../CONTRIBUTING.md) provides setup, focused-change and pull-request steps for people and AI contributors. Read these before changing the repository.

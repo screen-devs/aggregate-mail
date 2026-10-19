@@ -16,7 +16,8 @@
     "package:mac": "npm run build && electron-builder --mac dmg zip --publish never",
     "package:mac:dir": "npm run build && electron-builder --mac --dir --publish never",
     "check:desktop": "node scripts/launch-desktop.mjs --check-startup",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "cli": "node scripts/emc2.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
@@ -110,5 +111,8 @@
       "owner": "screen-devs",
       "repo": "aggregate-mail"
     }
+  },
+  "bin": {
+    "emc2": "scripts/emc2.mjs"
   }
 }

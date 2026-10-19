@@ -266,3 +266,9 @@ The macOS Apple silicon candidate builds as a DMG and ZIP. Its packaged startup 
 Strict TypeScript and production builds pass. Tests cover sender-rule precedence, visual classification, header validation, message-link rendering and privacy, desktop navigation restrictions, configuration preservation, and MCP authentication, mail reads and mocked reply operations. `node scripts/check-mcp.mjs` checks an MCP initialize/tools-list handshake against a separate temporary server and verifies requests without a token get 401. Development and packaged native startup checks passed, including encrypted database access and rejection of requests outside the desktop session. The email-link repair was tested in a browser with synthetic mail: mouse and keyboard activation, quoted URLs, address privacy and escaped HTML. Native Windows and macOS browser handoff were not tested for this repair. Real account sign-in, mailbox operations and delivery remain unverified until provider credentials are supplied.
 
 Video frames at 25s, 65s, 104s, 140s and 178s were inspected and measured at native resolution. The transcript is `.reference/transcript.txt`. The video's future Cloudflare mailbox idea is outside this version.
+
+## Command line
+
+Use the [Emc² CLI](docs/cli.md) to inspect cached mail and request explicit
+mail actions through the running app's local authenticated MCP connection.
+Run `npm run cli -- help` from a source checkout with Node 24 and dependencies.
