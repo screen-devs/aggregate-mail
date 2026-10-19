@@ -569,7 +569,7 @@ export function App() {
   };
   const archive = (mail: Mail) => {
     void changeMessage(mail, "archive");
-    setOpened(false);
+    if (selectedId === mail.id) setOpened(false);
   };
   const neighbours = opened && selected
     ? filterMail(state.messages, navigation.location, activeLabel, now, selected.id, tabOf, search.matches) : filtered;
@@ -657,6 +657,8 @@ export function App() {
       else if (inbox && action === "density") setDensity((value) => value === "comfortable" ? "compact" : "comfortable");
       else if (inbox && action === "important") switchView("inbox");
       else if (inbox && action === "other") nextTab();
+      else if (target instanceof HTMLElement && target.closest(".row-actions") &&
+        ["next", "previous", "open", "done", "reply", "snooze", "teach"].includes(action ?? "")) return;
       else if (inbox && (action === "next" || action === "previous")) {
         event.preventDefault();
         const next = action === "next" ? nextMail : previousMail;
@@ -1032,13 +1034,18 @@ export function App() {
                     sort={sort}
                     opening={interaction.opening}
                     accounts={state.accounts}
-                    disabled={busy || syncing}
                     onOpen={openMail}
                     onSelect={setSelectedId}
                     onMenu={showMailMenu}
                     onMenuKey={mailMenuKey}
-                    onTrash={setTrashMail}
-                    trashUnavailable={trashUnavailable}
+                    rowActions={(mail) => <MailActions
+                      row mail={mail} reading={reading.has(mail.id)} busy={busy} syncing={syncing}
+                      snoozed={isSnoozed(mail)} trashUnavailable={trashUnavailable(mail)} shortcut={shortcut}
+                      onRead={() => markRead(mail)} onReply={() => startCompose(mail)}
+                      onArchive={() => archive(mail)} onTrash={() => setTrashMail(mail)}
+                      onSnooze={() => setSnooze(mail)} onUnsnooze={() => void changeMessage(mail, "unsnooze")}
+                      onPin={() => void changeMessage(mail, mail.pinned ? "unpin" : "pin")}
+                    />}
                   />
                 ) : (
                   <ListEmpty
@@ -1211,7 +1218,7 @@ export function App() {
             onSnooze={(until) => void perform(async () => {
               await api(`/messages/${encodeURIComponent(snooze.id)}`, "PATCH", { action: "snooze", until });
               setSnooze(null);
-              setOpened(false);
+              if (selectedId === snooze.id) setOpened(false);
             }, `Email snoozed until ${new Date(until).toLocaleString()}.`)}
             onUnsnooze={() => void perform(async () => {
               await api(`/messages/${encodeURIComponent(snooze.id)}`, "PATCH", { action: "unsnooze" });

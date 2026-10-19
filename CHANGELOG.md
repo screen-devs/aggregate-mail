@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add Read, Snooze/Return to inbox, Reply, Archive and Pin beside Trash on each mail row. Use a raised 3D toolbar that follows built-in and custom themes, mode and accent. Keep row actions tied to their own email, with visible touch controls and the existing provider safeguards.
+
 - Add customizable floating notifications in Settings: separate new-mail and action switches, position, duration, preview and reset. Confirm Snooze with its return time, Return to inbox, Archive and Trash; preserve confirmed outcomes when inbox refresh fails. Errors and uncertain-send warnings remain until dismissed.
 
 - Keep the release-validator test loader as a file URL so Node can import it on Windows.

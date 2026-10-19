@@ -5,17 +5,19 @@ import { Archive, Check, ChevronDown, ChevronUp, Clock, Close, Inbox, Pin, Reply
 type Icon = ComponentType<{ color?: string; size?: number }>;
 
 // An icon-only toolbar button in the manner of Mail: the name is its label and tooltip.
-function Tool({ label, title, Icon, disabled, busy, onClick }: {
+function Tool({ label, title, Icon, disabled, busy, pressed, description, onClick }: {
   label: string;
   title?: string;
   Icon: Icon;
   disabled?: boolean;
   busy?: boolean;
+  pressed?: boolean;
+  description?: string;
   onClick: () => void;
 }) {
   return (
     <button type="button" className="tool" aria-label={label} title={title ?? label}
-      disabled={disabled} aria-busy={busy} onClick={onClick}>
+      disabled={disabled} aria-busy={busy} aria-pressed={pressed} aria-description={description} onClick={onClick}>
       <Icon color="currentColor" size={16} />
     </button>
   );
@@ -27,12 +29,13 @@ function Tool({ label, title, Icon, disabled, busy, onClick }: {
  * Mark as read. Opened mail adds a close control at the right.
  */
 export function MailActions({
-  mail, opened, reading, busy, syncing, snoozed, trashUnavailable, shortcut,
+  mail, opened = false, row = false, reading, busy, syncing, snoozed, trashUnavailable, shortcut,
   onRead, onReply, onArchive, onTrash, onSnooze, onUnsnooze, onClose,
   onPrevious, onNext, previousDisabled, nextDisabled, onPin,
 }: {
   mail: Mail;
-  opened: boolean;
+  opened?: boolean;
+  row?: boolean;
   reading: boolean;
   busy: boolean;
   syncing: boolean;
@@ -45,7 +48,7 @@ export function MailActions({
   onTrash: () => void;
   onSnooze: () => void;
   onUnsnooze: () => void;
-  onClose: () => void;
+  onClose?: () => void;
   onPrevious?: () => void;
   onNext?: () => void;
   previousDisabled?: boolean;
@@ -53,28 +56,30 @@ export function MailActions({
   onPin?: () => void;
 }) {
   const readLabel = reading ? "Marking as read…" : mail.unread ? "Mark as read" : "Read";
+  const archive = <Tool label="Archive" title={`Archive in your provider (${shortcut("done")})`} Icon={Archive}
+    disabled={busy || syncing || mail.archived} onClick={onArchive} />;
+  const trash = <Tool label="Move to Trash" title={trashUnavailable || "Move to Trash"} Icon={Trash}
+    description={trashUnavailable} disabled={busy || syncing || !!trashUnavailable} onClick={onTrash} />;
+  const snooze = snoozed ? (
+    <Tool label="Return to inbox" Icon={Inbox} disabled={busy || syncing} onClick={onUnsnooze} />
+  ) : (
+    <Tool label="Snooze" title={`Snooze (${shortcut("snooze")})`} Icon={Clock}
+      disabled={busy || syncing || mail.archived} onClick={onSnooze} />
+  );
+  const reply = <Tool label="Reply" title={`Reply (${shortcut("reply")})`} Icon={Reply} disabled={busy} onClick={onReply} />;
+  const read = <Tool label={readLabel} Icon={Check} disabled={!mail.unread || reading} busy={reading} onClick={onRead} />;
+  const pin = onPin && <Tool label={mail.pinned ? "Unpin email" : "Pin email"}
+    title={`${mail.pinned ? "Unpin" : "Pin"} email (local to this app)`} Icon={Pin}
+    pressed={row ? !!mail.pinned : undefined} disabled={busy} onClick={onPin} />;
   return (
-    <div className="mail-actions" role="group" aria-label={opened ? "Opened email actions" : "Selected email actions"}>
-      <div className="tool-group">
-        <Tool label="Archive" title={`Archive in your provider (${shortcut("done")})`} Icon={Archive}
-          disabled={busy || syncing || mail.archived} onClick={onArchive} />
-        <Tool label="Move to Trash" title={trashUnavailable || "Move to Trash"} Icon={Trash}
-          disabled={busy || syncing || !!trashUnavailable} onClick={onTrash} />
-        {snoozed ? (
-          <Tool label="Return to inbox" Icon={Inbox} disabled={busy || syncing} onClick={onUnsnooze} />
-        ) : (
-          <Tool label="Snooze" title={`Snooze (${shortcut("snooze")})`} Icon={Clock}
-            disabled={busy || syncing || mail.archived} onClick={onSnooze} />
-        )}
-      </div>
-      <div className="tool-group">
-        <Tool label="Reply" title={`Reply (${shortcut("reply")})`} Icon={Reply} disabled={busy} onClick={onReply} />
-        <Tool label={readLabel} Icon={Check} disabled={!mail.unread || reading} busy={reading} onClick={onRead} />
-        {onPin && <Tool label={mail.pinned ? "Unpin email" : "Pin email"} title={`${mail.pinned ? "Unpin" : "Pin"} email (local to this app)`} Icon={Pin}
-          disabled={busy} onClick={onPin} />}
-      </div>
-      <span role="status">{reading ? "Read update pending." : busy ? "Updating email…" : ""}</span>
-      {trashUnavailable && <span id="trash-unavailable">{trashUnavailable}</span>}
+    <div className={`mail-actions${row ? " row-actions" : ""}`} role="group"
+      aria-label={row ? "Email actions" : opened ? "Opened email actions" : "Selected email actions"}>
+      {row ? <>{read}{snooze}{reply}{archive}{pin}{trash}</> : <>
+        <div className="tool-group">{archive}{trash}{snooze}</div>
+        <div className="tool-group">{reply}{read}{pin}</div>
+      </>}
+      <span role="status">{reading ? "Read update pending." : !row && busy ? "Updating email…" : ""}</span>
+      {!row && trashUnavailable && <span id="trash-unavailable">{trashUnavailable}</span>}
       {opened && <div className="tool-group reader-navigation" role="group" aria-label="Reader navigation">
         {onPrevious && <Tool label="Previous email" Icon={ChevronUp} disabled={previousDisabled} onClick={onPrevious} />}
         {onNext && <Tool label="Next email" Icon={ChevronDown} disabled={nextDisabled} onClick={onNext} />}

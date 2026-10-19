@@ -24,47 +24,99 @@
 .mail-row:hover .row:not(.selected) {
   background: var(--hover);
 }
-.row-trash {
+/* Row controls inherit Appearance tokens, including unsaved custom palettes. */
+.mail-actions.row-actions {
+  --row-shine: color-mix(in srgb, var(--text) 17%, transparent);
+  --row-well: color-mix(in srgb, var(--bg) 92%, var(--text));
+  --row-cast: color-mix(in srgb, var(--bg) 60%, transparent);
+  --row-face-top: color-mix(in srgb, var(--raised) 82%, var(--text));
+  --row-face-mid: color-mix(in srgb, var(--raised) 96%, var(--text));
+  --row-face-bottom: color-mix(in srgb, var(--raised) 85%, var(--surface));
   position: absolute;
+  isolation: isolate;
+  z-index: 2;
   top: 50%;
   right: 16px;
   transform: translateY(-50%);
-  width: 26px;
-  height: 26px;
-  justify-content: center;
-  border-radius: var(--radius-control);
-  visibility: hidden;
+  gap: 2px;
+  padding: 0 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--raised) 88%, var(--text)), var(--raised) 45%, color-mix(in srgb, var(--raised) 80%, var(--bg)));
+  box-shadow: inset 0 1px 0 var(--row-shine), inset 0 -1px 0 var(--line), 0 2px 0 var(--row-well), 0 4px 6px var(--row-cast);
+  opacity: 0;
   pointer-events: none;
 }
-.mail-row:hover .row-trash,
-.mail-row:focus-within .row-trash {
-  visibility: visible;
-  pointer-events: auto;
+[data-scheme="light"] .row-actions {
+  --row-shine: color-mix(in srgb, var(--surface) 90%, transparent);
+  --row-well: color-mix(in srgb, var(--surface) 76%, var(--text));
+  --row-cast: color-mix(in srgb, var(--text) 16%, transparent);
+  --row-face-top: var(--raised);
+  --row-face-mid: color-mix(in srgb, var(--raised) 97%, var(--text));
+  --row-face-bottom: color-mix(in srgb, var(--raised) 90%, var(--text));
+  background: linear-gradient(180deg, var(--raised), color-mix(in srgb, var(--raised) 95%, var(--text)) 45%, color-mix(in srgb, var(--surface) 88%, var(--text)));
 }
-.mail-row:hover .row-trash:disabled,
-.mail-row:focus-within .row-trash:disabled {
-  opacity: 0.4;
+.row-actions .tool {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: linear-gradient(180deg, var(--row-face-top), var(--row-face-mid) 46%, var(--row-face-bottom));
+  box-shadow: inset 0 1px 0 var(--row-shine), inset 0 -1px 1px var(--line), 0 1px 0 var(--row-well), 0 2px 3px var(--row-cast);
+  transition: none;
 }
+.row-actions .tool:hover:not(:disabled) { color: var(--text); background: linear-gradient(180deg, var(--row-face-top), var(--row-face-mid) 46%, var(--row-face-bottom)); }
+.row-actions .tool[aria-pressed="true"],
+.row-actions .tool[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 50%, var(--raised)), color-mix(in srgb, var(--accent) 30%, var(--raised)) 48%, color-mix(in srgb, var(--accent) 20%, var(--surface)));
+}
+.row-actions .tool:last-of-type,
+.row-actions .tool:last-of-type:hover:not(:disabled) { color: var(--danger); }
+.row-actions .tool:disabled { opacity: 0.36; }
+.row-actions .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; z-index: 1; }
+.row-actions .tool:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 3px var(--row-cast), 0 1px 0 var(--row-shine); }
+.mail-row:hover .row-actions,
+.mail-row:focus-within .row-actions { opacity: 1; pointer-events: auto; }
+.mail-row:hover .row,
+.mail-row:focus-within .row { padding-right: 194px; }
 .mail-row:hover .row time,
-.mail-row:focus-within .row time {
-  opacity: 0;
+.mail-row:focus-within .row time { opacity: 0; }
+.compact .row-actions .tool { width: 24px; height: 22px; }
+.row-actions > [role="status"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
-.compact .row-trash {
-  width: 24px;
-  height: 24px;
+@media (hover: hover) and (pointer: fine) {
+  .row-actions .tool:not(:focus-visible) { transition: transform 100ms var(--ease-out); }
+  .row-actions .tool:hover:not(:disabled):not(:active):not(:focus-visible) { transform: translateY(-1px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-actions .tool { transition: none; }
 }
 @media (hover: none) {
-  .row-trash {
-    visibility: visible;
+  .mail-row { flex-direction: column; align-items: stretch; }
+  .mail-row .mail-actions.row-actions {
+    position: relative;
+    top: auto;
+    right: auto;
+    transform: none;
+    width: max-content;
+    max-width: calc(100% - 36px);
+    margin: 3px 18px 6px;
+    opacity: 1;
     pointer-events: auto;
   }
-  .row time {
-    margin-right: 36px;
-  }
+  .mail-row:hover .row,
+  .mail-row:focus-within .row { padding-right: 12px; }
   .mail-row:hover .row time,
-  .mail-row:focus-within .row time {
-    opacity: 1;
-  }
+  .mail-row:focus-within .row time { opacity: 1; }
 }
 /* Selection: an accent tint while the list has focus, a gray wash otherwise.
    Text keeps its own colors, so it reads with every accent and mode. */
@@ -325,10 +377,16 @@
   height: 22px;
   margin: 1px 10px 0 0;
 }
-.mail-row:has(.card) .row-trash {
+.mail-row:has(.card) .row-actions {
   top: 6px;
   right: 12px;
   transform: none;
+}
+.mail-row:hover .row.card,
+.mail-row:focus-within .row.card { padding-right: 12px; }
+@media (hover: hover) {
+  .mail-row:hover .card .row-line,
+  .mail-row:focus-within .card .row-line { padding-right: 176px; }
 }
 .filter-menu {
   position: relative;

@@ -12,10 +12,19 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-async function mount(preferences?: NotificationPreferences) {
+async function mount(preferences?: NotificationPreferences, touch = false) {
   const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/" });
   dom.window.HTMLElement.prototype.scrollTo = () => {};
   dom.window.HTMLElement.prototype.scrollIntoView = () => {};
+  if (touch) {
+    dom.window.matchMedia = (query) => ({ matches: query === "(hover: none)" || query.startsWith("(min-width:"),
+      media: query, onchange: null, addListener() {}, removeListener() {},
+      addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } });
+    const rect = dom.window.HTMLElement.prototype.getBoundingClientRect;
+    dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
+      return this.classList.contains("row-actions") ? { height: 40 } as DOMRect : rect.call(this);
+    };
+  }
   const globals = {
     window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage,
     location: dom.window.location, history: dom.window.history, HTMLElement: dom.window.HTMLElement,
@@ -122,10 +131,11 @@ async function mount(preferences?: NotificationPreferences) {
   };
   const row = (id = "a:1:5") => container.querySelector<HTMLButtonElement>(`[id='mail-${id}']`)!;
   const trash = (id = "a:1:5") => button("Move to Trash", row(id).parentElement!);
-  const toolbar = () => container.querySelector<HTMLElement>(".mail-actions")!;
+  const toolbar = () => container.querySelector<HTMLElement>(".mail-actions:not(.row-actions)")!;
   const dialog = () => container.querySelector<HTMLElement>('[role="dialog"]')!;
   return {
     state, container, button, click, key, row, trash, toolbar, dialog, mutations, drafts,
+    rowActions: (id = "a:1:5") => row(id).parentElement!.querySelector<HTMLElement>(".row-actions")!,
     refresh: async () => { await act(async () => changed?.()); },
     open: async (id = "a:1:5") => { await click(row(id)); await key("Enter", row(id)); },
     // JSDOM has no native button default action; model Enter after dispatching the key.
@@ -569,4 +579,131 @@ test("App routes persisted and changed durations to mounted preview notices", as
     await app.click(app.button("Dismiss notification"));
     assert.equal(app.container.querySelector(".toast-info"), null);
   } finally { await app.close(); context.mock.timers.reset(); }
+});
+
+
+test("row controls act on their own account while an unrelated reader stays open", async () => {
+  const app = await mount();
+  try {
+    app.state.messages[2].replyTo = "reply@example.com";
+    await app.refresh();
+    await app.open();
+    const message = app.container.querySelector(".message");
+    const controls = app.rowActions("b:1:5");
+    assert.deepEqual([...controls.querySelectorAll("button")].map((button) => button.getAttribute("aria-label")),
+      ["Mark as read", "Snooze", "Reply", "Archive", "Pin email", "Move to Trash"]);
+    assert.equal(app.container.querySelector("button button"), null);
+    const pin = app.button("Pin email", controls);
+    for (const key of ["j", "k", "e", "r", "s", "ArrowDown", "ArrowUp"]) await app.key(key, pin);
+    assert.equal(app.dialog(), null);
+    assert.equal(app.row().getAttribute("aria-current"), "true");
+    assert.equal(app.mutations.length, 1, "button keys do not dispatch global mail operations");
+    await app.activate(pin);
+    assert.equal(app.button("Unpin email", app.rowActions("b:1:5")).getAttribute("aria-pressed"), "true");
+    assert.equal(app.state.messages[0].pinned, undefined);
+    await app.click(app.button("Unpin email", app.rowActions("b:1:5")));
+    assert.equal(app.state.messages[2].pinned, undefined);
+    await app.click(app.button("Reply", app.rowActions("b:1:5")));
+    assert.equal(app.dialog().querySelector<HTMLSelectElement>("select")!.value, "b");
+    assert.equal(app.dialog().querySelector<HTMLInputElement>('input[type="email"]')!.value, "reply@example.com");
+    assert.equal(app.container.querySelector(".message"), message);
+    await app.click(app.button("Close dialog", app.dialog()));
+    await app.click(app.button("Snooze", app.rowActions("b:1:5")));
+    await app.click(app.button("In one hour", app.dialog()));
+    assert.equal(app.row("b:1:5"), null);
+    assert.equal(app.state.messages[0].snoozedUntil, null);
+    assert.equal(app.container.querySelector(".message"), message);
+    // Returning it through the existing view restores the row for Archive.
+    await app.click(app.button("Snoozed1"));
+    await app.activate(app.button("Return to inbox", app.rowActions("b:1:5")));
+    await app.click(app.button("Inbox3"));
+    await app.open();
+    const reopened = app.container.querySelector(".message");
+    await app.click(app.button("Archive", app.rowActions("b:1:5")));
+    assert.equal(app.container.querySelector(".message"), reopened, "Archive keeps an unrelated reader");
+    assert.equal(app.row().getAttribute("aria-current"), "true");
+    assert.equal(app.row("b:1:5"), null);
+    assert.deepEqual(app.mutations.filter(({ action }) => action !== "read"), [
+      { id: "b:1:5", action: "pin" }, { id: "b:1:5", action: "unpin" },
+      { id: "b:1:5", action: "snooze" }, { id: "b:1:5", action: "unsnooze" },
+      { id: "b:1:5", action: "archive" },
+    ]);
+  } finally { await app.close(); }
+});
+
+test("row reads coalesce, retain unread on failure and update only provider-confirmed identity", async () => {
+  const app = await mount();
+  try {
+    await app.open();
+    const message = app.container.querySelector(".message");
+    const gate = app.holdRead();
+    app.failRead(true);
+    await app.activate(app.button("Mark as read", app.rowActions("b:1:5")));
+    const pending = app.button("Marking as read…", app.rowActions("b:1:5"));
+    assert.equal(pending.disabled, true);
+    assert.equal(pending.getAttribute("aria-busy"), "true");
+    assert.match(app.rowActions("b:1:5").textContent!, /Read update pending/);
+    await app.click(pending);
+    assert.ok(app.row("b:1:5").classList.contains("unread"));
+    await app.finish(gate);
+    await app.refresh();
+    assert.ok(app.row("b:1:5").classList.contains("unread"));
+    assert.equal(app.mutations.filter(({ id }) => id === "b:1:5").length, 1, "no implicit retry");
+    app.failRead(false);
+    await app.click(app.button("Mark as read", app.rowActions("b:1:5")));
+    assert.equal(app.button("Read", app.rowActions("b:1:5")).disabled, true);
+    assert.ok(app.row("a:1:6").classList.contains("unread"));
+    assert.equal(app.container.querySelector(".message"), message);
+    assert.equal(app.row().getAttribute("aria-current"), "true");
+  } finally { await app.close(); }
+});
+
+test("row provider restrictions and privacy survive sync and archived IMAP identities", async () => {
+  const app = await mount();
+  try {
+    app.state.syncing = true;
+    await app.refresh();
+    const controls = app.rowActions("b:1:5");
+    for (const label of ["Archive", "Snooze", "Move to Trash"]) assert.ok(app.button(label, controls).disabled);
+    for (const label of ["Mark as read", "Reply", "Pin email"]) assert.equal(app.button(label, controls).disabled, false);
+    app.state.syncing = false;
+    app.state.messages[2].archived = true;
+    app.state.messages[2].messageId = undefined;
+    await app.refresh();
+    await app.click(app.button("Archive"));
+    const archived = app.rowActions("b:1:5");
+    for (const label of ["Archive", "Snooze", "Move to Trash"]) assert.ok(app.button(label, archived).disabled);
+    assert.match(app.button("Move to Trash", archived).getAttribute("aria-description")!, /Message-ID/);
+    await app.click(app.button("Hide personal information"));
+    assert.doesNotMatch(app.row("b:1:5").parentElement!.outerHTML, /Private Reader|reader@example.com|sender@example.com/);
+    assert.equal(archived.querySelector("[id]"), null, "repeated row toolbars introduce no duplicate IDs");
+  } finally { await app.close(); }
+});
+
+test("mounted touch rows reserve measured toolbar height through density changes", async () => {
+  const app = await mount(undefined, true);
+  try {
+    const window = () => app.container.querySelector<HTMLElement>(".mail-window")!;
+    const tops = () => [...window().querySelectorAll<HTMLElement>(".mail-window-row")].map((row) => Number.parseFloat(row.style.top));
+    assert.deepEqual(tops(), [30, 150, 270], "80px card plus 40px measured touch strip");
+    assert.equal(window().style.height, "390px");
+    assert.equal(app.rowActions().querySelectorAll("button").length, 6);
+    await app.key("-", app.row(), { ctrlKey: true });
+    assert.deepEqual(tops(), [30, 124, 218], "compact 54px card plus the same measured strip");
+    assert.equal(window().style.height, "312px");
+  } finally { await app.close(); }
+});
+
+test("focused row controls retain global Escape, Commands and privacy shortcuts", async () => {
+  const app = await mount();
+  try {
+    await app.open();
+    await app.key("Escape", app.button("Pin email", app.rowActions("b:1:5")));
+    assert.equal(app.container.querySelector(".message"), null, "Escape still closes the reader");
+    await app.key("k", app.button("Pin email", app.rowActions("b:1:5")), { ctrlKey: true });
+    assert.equal(app.dialog().getAttribute("aria-label"), "Commands");
+    await app.key("Escape");
+    await app.key("p", app.button("Pin email", app.rowActions("b:1:5")));
+    assert.ok(app.button("Show personal information"));
+  } finally { await app.close(); }
 });

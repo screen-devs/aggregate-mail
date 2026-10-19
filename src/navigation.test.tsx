@@ -1208,7 +1208,8 @@ test("reader button traversal keeps focus in the reader so Tab preserves the mai
       assert.equal(tab.defaultPrevented, false);
       assert.equal(app.title(), title);
       assert.ok(app.container.querySelector('.sidebar-group button.active')?.textContent?.includes("Inbox"));
-      const action = app.button("Reply"); action.focus();
+      const action = app.container.querySelector<HTMLButtonElement>('[aria-label="Opened email actions"] [aria-label="Reply"]')!;
+      action.focus();
       const key = new app.window.KeyboardEvent("keydown", { key: title === "Beta" ? "k" : "j", bubbles: true, cancelable: true });
       await act(async () => action.dispatchEvent(key));
       const nextReader = app.container.querySelector<HTMLElement>(".message")!;
