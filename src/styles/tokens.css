@@ -4,7 +4,7 @@
 :root {
   --radius-control: 8px;
   --radius-pane: 14px;
-  --sidebar: 228px;
+  --sidebar: 196px;
   --list-width: clamp(340px, 30vw, 480px);
   --mail-row-low: 30px;
   --mail-row-medium: 36px;
@@ -28,7 +28,7 @@
     Inter,
     system-ui,
     sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   line-height: 1.45;
   color: var(--text);
   background: var(--bg);

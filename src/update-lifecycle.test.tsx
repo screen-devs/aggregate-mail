@@ -65,13 +65,18 @@ test("mounted App drains its send promise and retains the real unload guard for 
   };
   try {
     await act(async () => root.render(<App />));
+    await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
     assert.equal(unload(), false);
     assert.ok(updateState);
     await act(async () => updateState!({ phase: "installing", version: "0.1.7" }));
     assert.ok(container.querySelector(".frame")!.hasAttribute("inert"));
+    const search = container.querySelector<HTMLInputElement>('[role="search"] input');
+    assert.ok(search);
+    assert.equal(search.disabled, true, "persistent search is disabled during installation");
+    assert.equal(!!search.closest(".frame[inert]"), true, "search stays inside the inert app frame");
     for (const key of ["c", "?", "/", ","]) {
       await act(async () => dom.window.document.body.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key, bubbles: true })));
-      assert.equal(container.querySelector('.compose-form, .settings, [role="dialog"], [role="search"]'), null,
+      assert.equal(!!container.querySelector('.compose-form, .settings, [role="dialog"]'), false,
         `installing blocks global ${key} even when dispatched outside the inert frame`);
     }
     const updater = container.querySelector<HTMLButtonElement>('[aria-controls="update-details"]')!;

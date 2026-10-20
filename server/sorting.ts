@@ -1,6 +1,7 @@
+import { matchingRule, type RuleMail } from "../shared/rules.js";
 import { z } from "zod";
 import { jevProviderOf, jevProviders } from "../shared/types.js";
-import type { Mail, Rule } from "../shared/types.js";
+import type { Rule } from "../shared/types.js";
 
 const classification = z.object({
   category: z.enum(["important", "other"]),
@@ -12,12 +13,10 @@ export type Sorting = z.infer<typeof classification>;
 // falls back to local sorting and the user is told which provider failed.
 export class SortingUnavailable extends Error {}
 export function sortMail(
-  mail: Pick<Mail, "address" | "subject" | "preview">,
+  mail: RuleMail,
   rules: Rule[],
 ) {
-  const rule = rules.find(
-    (r) => r.sender.toLowerCase() === mail.address.toLowerCase(),
-  );
+  const rule = matchingRule(mail, rules);
   if (rule)
     return {
       category: rule.category,
@@ -100,7 +99,7 @@ function jevTarget() {
 }
 // Jev judges one state against a map of typed questions and never writes prose.
 async function classifyWithJev(
-  mail: Pick<Mail, "address" | "subject" | "preview">,
+  mail: RuleMail,
 ): Promise<Sorting> {
   const target = jevTarget();
   const state = [
@@ -187,10 +186,10 @@ async function classifyWithJev(
 }
 
 export async function classify(
-  mail: Pick<Mail, "address" | "subject" | "preview">,
+  mail: RuleMail,
   rules: Rule[],
 ) {
-  if (rules.some((r) => r.sender.toLowerCase() === mail.address.toLowerCase()))
+  if (matchingRule(mail, rules))
     return sortMail(mail, rules);
   if (process.env.TYPESAFE_API_KEY) return classifyWithJev(mail);
   if (!process.env.OPENAI_API_KEY) return sortMail(mail, rules);
@@ -198,7 +197,7 @@ export async function classify(
 }
 
 async function classifyWithOpenAi(
-  mail: Pick<Mail, "address" | "subject" | "preview">,
+  mail: RuleMail,
 ): Promise<Sorting> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",

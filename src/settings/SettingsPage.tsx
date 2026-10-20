@@ -1,6 +1,6 @@
 import { notificationDefaults, type NotificationPreferences } from "../notifications";
 import { NotificationSettings } from "./NotificationSettings";
-import { Fragment, useContext, useId, useState } from "react";
+import { Fragment, useContext, useId, useState, type ReactNode } from "react";
 import type { Account, State } from "../../shared/types";
 import { emptyComposePreferences, type ComposePreferences } from "../../shared/mail-features";
 import { ComposeSettings } from "./ComposeSettings";
@@ -23,7 +23,7 @@ import { BrandingSection } from "./BrandingSection";
 import { ConfigurationForm } from "./ConnectionForm";
 import { InteractionSettings } from "./InteractionSettings";
 import { McpSection } from "./McpSection";
-import type { SettingsSection } from "./sections";
+import { settingsSections, type SettingsSection } from "./sections";
 
 export function SettingsPage({
   state,
@@ -38,6 +38,8 @@ export function SettingsPage({
   interaction,
   onInteraction,
   section,
+  onSection,
+  assistants,
   appearance,
   scheme,
   onAppearance,
@@ -63,6 +65,8 @@ export function SettingsPage({
   interaction: InteractionPreferences;
   onInteraction: (value: InteractionPreferences) => void;
   section: SettingsSection;
+  onSection?: (section: SettingsSection) => void;
+  assistants?: ReactNode;
   appearance: Appearance;
   scheme: Scheme;
   onAppearance: (value: Appearance) => boolean;
@@ -73,18 +77,24 @@ export function SettingsPage({
   const { on: privacy, names } = useContext(PrivacyContext);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameError, setRenameError] = useState("");
+  const current = settingsSections.find((item) => item.id === section)!;
   return (
     <main className="settings">
+      {onSection && <nav className="settings-navigation" aria-label="Settings sections">
+        {settingsSections.map(({ id, label, Icon }) => <button key={id} type="button"
+          aria-current={section === id ? "page" : undefined} onClick={() => onSection(id)}>
+          <Icon color="currentColor" size={15} />{label}
+        </button>)}
+      </nav>}
       <div className="settings-column" key={section}>
+        <header className="settings-section-heading"><h1>{current.label}</h1><p>{current.description}</p></header>
         {section === "interaction" && <section>
-          <h1>Interaction</h1>
           <InteractionSettings value={interaction} onChange={onInteraction} />
         </section>}
-        {section === "notifications" && <section><h1>Notifications</h1>
+        {section === "notifications" && <section>
           <NotificationSettings value={notifications} onChange={(value) => onNotifications?.(value)} onPreview={() => onNotificationPreview?.()} />
         </section>}
         {section === "accounts" && <section>
-          <h1>Accounts</h1>
           <h2>Connected</h2>
           {state.accounts.length ? (
             <div className="settings-group">{state.accounts.map((a, index) => (
@@ -154,12 +164,10 @@ export function SettingsPage({
           </div>
         </section>}
         {section === "compose" && onComposePreferences && <section>
-          <h1>Compose</h1>
           <ComposeSettings accounts={state.accounts} value={state.composePreferences ?? emptyComposePreferences}
             onSave={onComposePreferences} busy={busy} />
         </section>}
         {section === "sorting" && <section>
-          <h1>Sorting</h1>
           <p className="note">
             {state.jevConfigured
               ? "Jev sorting is on. Sender, subject and preview text of new mail are sent to Jev."
@@ -202,7 +210,6 @@ export function SettingsPage({
           )}
         </section>}
         {section === "connection" && <section>
-          <h1>Connection</h1>
           <details>
             <summary>Advanced connection setup</summary>
             {!state.googleConfigured && (
@@ -260,7 +267,6 @@ export function SettingsPage({
           </details>
         </section>}
         {section === "appearance" && <section>
-          <h1>Appearance</h1>
           <AppearanceSettings value={appearance} scheme={scheme} onChange={onAppearance} onPreview={onThemePreview} onModalChange={onModalChange} />
           {window.desktop && window.desktop.platform !== "darwin" ? (
             <>
@@ -306,9 +312,8 @@ export function SettingsPage({
           busy={busy}
           onNotice={onNotice}
         />}
-        {section === "mcp" && <McpSection api={api} perform={perform} busy={busy} />}
+        {section === "mcp" && <>{assistants}<details className="settings-agent-advanced"><summary>Connection controls</summary><McpSection api={api} perform={perform} busy={busy} /></details></>}
         {section === "about" && <section>
-          <h1>About</h1>
           <p className="note">
             {aboutStorageSentence(globalThis.window?.desktop?.credentialFallback)}. IMAP watches for changes;
             Gmail checks for changes every 15 seconds, with periodic full sync

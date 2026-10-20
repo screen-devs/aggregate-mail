@@ -174,7 +174,7 @@ test("formatted reader recovery keeps text on failure, ignores late content and 
   };
   const render = async (id: string, privacy = false, html?: string | null) => {
     await act(async () => root.render(<PrivacyContext.Provider value={{ on: privacy, revealed: new Set(), toggle() {} }}>
-      <ReaderContent mail={{ id, html, body: "Cached readable text" }} loadContent={loadContent}
+      <ReaderContent mail={{ id, html, body: "Cached readable text", attachments: html === null ? [] : undefined }} loadContent={loadContent}
         loadImages={async () => { metadataCalls++; return { images: [image] }; }} />
     </PrivacyContext.Provider>));
   };

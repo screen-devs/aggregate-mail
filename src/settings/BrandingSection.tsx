@@ -14,7 +14,6 @@ export function BrandingSection({
 }) {
   return (
     <section>
-      <h1>Branding</h1>
       <p className="note">
         Sender logos come from theSVG, an open brand icon library, and are
         cached on this computer. Scan the senders already in your inbox to

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, account, put, remove } from "./store.js";
+import { all, get, account, put, remove } from "./store.js";
 import { providers, sendSchema, SentCopyError, updateGmailLabels } from "./providers.js";
 
 let mailWork = Promise.resolve();
@@ -58,7 +58,7 @@ export const messageActionSchema = z.discriminatedUnion("action", [
 ]);
 
 export function findMail(id: string) {
-  const mail = all("mail").find((m) => m.id === id);
+  const mail = get("mail", id);
   if (!mail) throw new Error("Message not found.");
   return mail;
 }
@@ -66,8 +66,10 @@ export function findMail(id: string) {
 export async function updateMessage(
   id: string,
   input: z.infer<typeof messageActionSchema>,
+  beforeExecution?: () => void,
 ) {
   return runMailWork(async () => {
+    beforeExecution?.();
     const m = findMail(id);
     if (input.action === "pin" || input.action === "unpin") {
       const updated = { ...m };
@@ -126,10 +128,11 @@ export async function updateMessage(
   });
 }
 
-export async function sendMail(value: unknown) {
+export async function sendMail(value: unknown, beforeExecution?: () => void) {
   return trackMailWork(async () => {
     const input = sendSchema.parse(value);
     const a = account(input.accountId);
+    beforeExecution?.();
     try {
       await providers[a.provider].send(a, input);
     } catch (error) {

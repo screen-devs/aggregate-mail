@@ -33,7 +33,7 @@ function fixture(record?: Draft) {
     if (request.method === "POST") {
       const content = request.body as DraftContent;
       for (const key of Object.keys(content))
-        assert.ok(["to", "subject", "body", "inReplyTo", "threadId", "references", "sendUnknown"].includes(key));
+        assert.ok(["to", "cc", "attachments", "subject", "body", "inReplyTo", "threadId", "references", "sendUnknown"].includes(key));
       remote = saved({ ...content, accountId: initial.accountId }, 1);
       return structuredClone(remote);
     }
@@ -545,4 +545,19 @@ test("sessions reject mixed accounts synchronously and encode the bound account 
   encoded.change(encoded.content);
   await encoded.flush();
   assert.deepEqual(routes, ["/accounts/synthetic%2Faccount/drafts"]);
+});
+
+test('Cc and attachments survive draft snapshots, save changes and attachment-only drafts', async () => {
+ const attachments = [{ filename: 'note.txt', contentType: 'text/plain', content: 'bm90ZQ==' }];
+ const f = fixture();
+ const session=f.session({...blank, cc:['copy@example.com'], attachments});
+ attachments[0].filename='changed.txt';
+ assert.equal(session.content.attachments?.[0].filename,'note.txt');
+ session.change(session.content); await session.flush();
+ assert.deepEqual(f.remote?.cc,['copy@example.com']);
+ assert.equal(f.remote?.attachments?.[0].filename,'note.txt');
+ session.change({...session.content,cc:['other@example.com']}); await session.flush();
+ assert.deepEqual(f.remote?.cc,['other@example.com']);
+ const attachmentOnly=fixture(); const only=attachmentOnly.session({...blank,attachments});
+ only.change(only.content); await only.flush(); assert.equal(attachmentOnly.requests.length,1);
 });

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { reuseMailState } from "./mail-state";
+import { compileMailSearch } from "./mail-search";
 import type { State } from "../shared/types";
 
 const state: State = {
@@ -60,4 +61,29 @@ test("compose preferences keep unchanged snapshots stable while edits and arriva
   const edited = reuseMailState(current, incoming);
   assert.notEqual(edited.composePreferences, current.composePreferences);
   assert.equal(edited.composePreferences?.signatures.a, "Changed signature");
+});
+
+
+test("revision deltas preserve untouched identities without serializing bodies and apply explicit removals", () => {
+  const extra = { ...state.messages[0], id: "a:2", body: "Other full body" };
+  const current = { ...state, messages: [...state.messages, extra] };
+  let bodyComparisons = 0;
+  const stringify = JSON.stringify;
+  JSON.stringify = ((value: unknown, ...args: unknown[]) => {
+    if (value && typeof value === "object" && "body" in value) bodyComparisons++;
+    return Reflect.apply(stringify, JSON, [value, ...args]);
+  }) as typeof JSON.stringify;
+  try {
+    const unchanged = reuseMailState(current, { ...state, messages: [], mailMode: "delta", mailCursor: "generation:1", removedMailIds: [] });
+    assert.equal(unchanged, current);
+    const changed = { ...state.messages[0], body: "New searchable body", html: "<b>New HTML</b>" };
+    const updated = reuseMailState(current, { ...state, messages: [changed], mailMode: "delta", mailCursor: "generation:2", removedMailIds: [] });
+    assert.equal(updated.messages[0], changed); assert.equal(updated.messages[1], extra);
+    assert.equal(compileMailSearch('body:"New searchable body"', updated.accounts).matches(updated.messages[0]), true);
+    assert.equal(compileMailSearch('body:"Other full body"', updated.accounts).matches(updated.messages[1]), true);
+    assert.deepEqual(reuseMailState(updated, { ...state, messages: [], mailMode: "delta", mailCursor: "generation:3", removedMailIds: [extra.id] }).messages, [changed]);
+    const reset = reuseMailState(updated, { ...state, messages: [extra], mailMode: "snapshot", mailCursor: "new:0", removedMailIds: [] });
+    assert.deepEqual(reset.messages, [extra]);
+    assert.equal(bodyComparisons, 0);
+  } finally { JSON.stringify = stringify; }
 });

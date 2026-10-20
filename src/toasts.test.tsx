@@ -56,6 +56,9 @@ test("toasts queue without dropping errors, deduplicate, redact, pause expiry an
       notices.push("1 new unread email.", "info", "arrival:2");
     });
     assert.equal(notices.toasts.length, 3, "distinct arrivals survive text deduplication; repeated event stays silent");
+    assert.equal(document.querySelector(".toast-heading span")!.textContent, "3 notifications");
+    await act(async () => (document.querySelector(".toast-heading button") as HTMLButtonElement).click());
+    assert.equal(notices.toasts.length, 0, "Dismiss all clears only in-app notices");
   } finally {
     await act(async () => root.unmount()); context.mock.timers.reset(); dom.window.close();
     for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }

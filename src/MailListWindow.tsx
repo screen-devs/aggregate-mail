@@ -53,18 +53,19 @@ export function MailListWindow({ messages, selectedId, focusSelection, density, 
     if (!list || !element) return;
     const style = window.getComputedStyle(list);
     let actions = 0;
-    if (touchActions) for (const action of element.querySelectorAll<HTMLElement>(".mail-actions")) {
+    if (touchActions) for (const action of element.querySelectorAll<HTMLElement>(".mail-actions, .row-actions")) {
       const actionStyle = window.getComputedStyle(action);
       actions = Math.max(actions, action.getBoundingClientRect().height +
         (parseFloat(actionStyle.marginTop) || 0) + (parseFloat(actionStyle.marginBottom) || 0));
     }
-    const token = (name: string, fallback: number) => parseFloat(style.getPropertyValue(`--mail-row-${narrow ? "card-" : ""}${name}`)) || fallback;
+    const scale = parseFloat(style.getPropertyValue("--text-scale")) || 1;
+    const token = (name: string, fallback: number) => (parseFloat(style.getPropertyValue(`--mail-row-${narrow ? "card-" : ""}${name}`)) || fallback) * scale;
     const nextSizes = {
       low: token("low", narrow ? 60 : 30),
       medium: token("medium", narrow ? 80 : 36),
       high: token("high", narrow ? 80 : 50),
       compact: token("compact", narrow ? 54 : 26),
-      group: parseFloat(style.getPropertyValue("--mail-group-height")) || 30,
+      group: (parseFloat(style.getPropertyValue("--mail-group-height")) || 30) * scale,
       actions,
     };
     const width = list.clientWidth;
@@ -101,7 +102,7 @@ export function MailListWindow({ messages, selectedId, focusSelection, density, 
   useLayoutEffect(() => {
     if (!touchActions || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
-    for (const action of windowRef.current?.querySelectorAll(".mail-actions") || []) observer.observe(action);
+    for (const action of windowRef.current?.querySelectorAll(".mail-actions, .row-actions") || []) observer.observe(action);
     return () => observer.disconnect();
   });
   const selectedIndex = useMemo(() => messages.findIndex(mail => mail.id === selectedId), [messages, selectedId]);

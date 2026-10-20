@@ -5,6 +5,7 @@ import { customLabels } from "../mail-ui";
 import { Address, MailPrivacy, Redact } from "../ui/Privacy";
 import { Mail as MailIcon } from "../ui/icons";
 import { Avatar } from "./Avatar";
+import { ConversationEvidence } from "./ConversationEvidence";
 import { ReaderContent } from "./MessageContent";
 
 // Today's mail shows its time, this year's its day and time, older mail the full date.
@@ -22,13 +23,17 @@ function readerDate(date: number) {
  * An opened email: subject, then one sender line with the recipient beneath
  * and the date at the right, Gmail labels, and the body with its image consent.
  */
-export function Reader({ mail, provider, labels, busy, api, onLabels, onMenu, onMenuKey }: {
+export function Reader({ mail, provider, labels, busy, api, onLabels, onMenu, onMenuKey, onOpen, onChanged, onReplyAll, onTrack }: {
   mail: Mail;
   provider?: Provider;
   labels: GmailLabel[];
   busy: boolean;
   api: Api;
   onLabels: () => void;
+  onOpen?: (mail: Mail) => void;
+  onChanged?: () => Promise<unknown>;
+  onReplyAll?: () => void;
+  onTrack?: () => void;
   onMenu: (event: MouseEvent<HTMLElement>, mail: Mail) => void;
   onMenuKey: (event: KeyboardEvent<HTMLElement>, mail: Mail) => void;
 }) {
@@ -44,6 +49,7 @@ export function Reader({ mail, provider, labels, busy, api, onLabels, onMenu, on
               <span className="from-address"><Address value={mail.address} /></span>
             </p>
             <p className="from-to">To <Redact text={mail.to} /></p>
+            {mail.cc && <p className="from-to">Cc <Redact text={mail.cc}/></p>}
           </div>
           <time dateTime={new Date(mail.date).toISOString()} title={new Date(mail.date).toLocaleString()}>
             {readerDate(mail.date)}
@@ -57,9 +63,11 @@ export function Reader({ mail, provider, labels, busy, api, onLabels, onMenu, on
             <button className="link" disabled={busy} onClick={onLabels}>Edit labels</button>
           </div>
         )}
-        <ReaderContent key={mail.id} mail={mail}
+        <div className="message-labels">{onReplyAll && <button type="button" className="link" disabled={busy} onClick={onReplyAll}>Reply all</button>}{onTrack && <button type="button" className="link" disabled={busy} onClick={onTrack}>Track work</button>}</div>
+        <ReaderContent key={`content:${mail.id}`} mail={mail}
           loadContent={(id) => api(`/messages/${encodeURIComponent(id)}/content`, "POST")}
           loadImages={(id) => api(`/messages/${encodeURIComponent(id)}/images`, "POST")} />
+        {onOpen && onChanged && <ConversationEvidence key={`conversation:${mail.id}`} mail={mail} gmail={provider === "gmail"} api={api} onOpen={onOpen} onChanged={onChanged}/>}
       </article>
     </MailPrivacy>
   );

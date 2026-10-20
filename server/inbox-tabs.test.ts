@@ -29,3 +29,14 @@ test("a Teach rule marking the sender important pins it to Primary", () => {
   assert.equal(inboxTab(promo, [{ sender: "deals@shop.example", category: "important" }]), "primary");
   assert.equal(inboxTab(promo, [{ sender: "deals@shop.example", category: "other" }]), "promotions");
 });
+
+test("live tabs use account conditions, exclusions and the same rule precedence as sorting", () => {
+  const promo = { ...mail({ address: "deals@shop.example", subject: "Sale proposal", labelIds: ["CATEGORY_PROMOTIONS"] }), id: "a:1", accountId: "a" };
+  const rules = [
+    { id: "global", sender: promo.address, category: "important" as const },
+    { id: "scoped", sender: promo.address, category: "other" as const, accountId: "a", condition: { field: "subject" as const, contains: "proposal" } },
+  ];
+  assert.equal(inboxTab(promo, rules), "promotions");
+  assert.equal(inboxTab({ ...promo, accountId: "b" }, rules), "primary");
+  assert.equal(inboxTab(promo, [{ ...rules[0], excludedMailIds: [promo.id] }]), "promotions");
+});

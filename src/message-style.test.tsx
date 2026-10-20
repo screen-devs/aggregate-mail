@@ -28,7 +28,7 @@ test("theme choices grow above accent swatches without inheriting the mail-row h
     assert.ok(["", "auto"].includes(height(".settings-row.stacked")), "Theme rows must grow with their previews and labels");
     assert.equal(height(".theme-preview"), "56px");
     assert.equal(height(".accent-choices button"), "22px");
-    assert.equal(height(".row.stacked"), "calc(var(--mail-row-high) - 2px)", "Mail rows keep shared windowing geometry");
+    assert.equal(height(".row.stacked"), "calc((var(--mail-row-high) * var(--text-scale, 1)) - 2px)", "Mail rows keep shared scaled windowing geometry");
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
     else Reflect.deleteProperty(globalThis, "window");
@@ -56,9 +56,9 @@ test("image status styles preserve body paragraph size, spacing and sender prese
       return "";
     };
     const paragraphs = [...document.querySelectorAll(".message-body p")];
-    assert.deepEqual(paragraphs.map(fontSize), ["15px", "15px", "24px"]);
+    assert.deepEqual(paragraphs.map(fontSize), [15, 15, 24].map(size => `calc(${size}px * var(--text-scale, 1))`));
     assert.deepEqual(paragraphs.map((p) => dom.window.getComputedStyle(p).marginBottom), ["0.85em", "0.85em", "0.85em"]);
-    assert.equal(fontSize(document.querySelector('[role="status"]')!), "13px");
+    assert.equal(fontSize(document.querySelector('[role="status"]')!), "calc(13px * var(--text-scale, 1))");
   } finally { dom.window.close(); }
 });
 

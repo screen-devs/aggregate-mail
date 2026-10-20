@@ -22,7 +22,7 @@ const waitFor = async (condition: () => boolean) => {
   }
 };
 
-test("update quiesce drains real renderer/MCP sends and queued sync/mutations, rejects admission and resumes", async (t) => {
+test("update quiesce drains renderer sends and queued sync/mutations, approved agent replies stay drafts, rejects admission and resumes", async (t) => {
   const directory = mkdtempSync(path.join(tmpdir(), "emc2-update-drain-"));
   process.env.MAIL_DATA_DIR = directory;
   process.env.MAIL_CONFIG_PATH = path.join(directory, "absent.env");
@@ -33,12 +33,14 @@ test("update quiesce drains real renderer/MCP sends and queued sync/mutations, r
   const { providers } = await import("./providers.js");
   const backend = await import("./index.js");
   const actions = await import("./mail-actions.js");
+  const { propose } = await import("./workspace.js");
   put("account", "a", { id: "a", email: "sender@example.test", provider: "gmail", credentials: { refreshToken: "synthetic-token" } });
   const mail: Mail = { id: "a:1", remoteId: "1", accountId: "a", sender: "Sender", address: "sender@example.test",
     to: "recipient@example.test", subject: "Synthetic", preview: "Synthetic", body: "Synthetic", date: 1,
     unread: true, category: "important", relevance: 2, reason: "", archived: false, snoozedUntil: null };
   put("mail", mail.id, mail);
   put("mcp", "settings", { enabled: true, allowSending: true, token: "synthetic-mcp-token" });
+  put("agent", "synthetic-agent", { id: "synthetic-agent", name: "Synthetic", accountIds: ["a"], tools: ["reply_to_email"], token: "synthetic-agent-token", createdAt: 1 });
   const sendGate = deferred(), syncGate = deferred();
   let sends = 0, lists = 0, mutations = 0;
   let holdSend = true;
@@ -56,12 +58,10 @@ test("update quiesce drains real renderer/MCP sends and queued sync/mutations, r
     body: JSON.stringify({ accountId: "a", to: "recipient@example.test", subject: "Synthetic", body: "Synthetic" }) });
   try {
     const rendererSend = submit();
-    const mcpSend = fetch(`${base}/mcp`, { method: "POST", headers: {
-      "Content-Type": "application/json", Accept: "application/json, text/event-stream", Authorization: "Bearer synthetic-mcp-token",
-    }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: {
-      name: "reply_to_email", arguments: { id: "a:1", body: "Synthetic reply" },
-    } }) });
-    await waitFor(() => sends === 2);
+    const proposal = propose("synthetic-agent", "send", { accountId: "a", to: "recipient@example.test", subject: "Synthetic", body: "Synthetic reply" }, "a:1");
+    const approved = await (await fetch(`${base}/api/agent/proposals/${proposal.id}/approve`, { method: "POST", headers, body: JSON.stringify({ digest: proposal.digest }) })).json() as { status: string; receipt: { draftId?: string } };
+    assert.equal(approved.status, "succeeded"); assert.ok(approved.receipt.draftId, "Approval saves a draft");
+    await waitFor(() => sends === 1);
     const sync = backend.syncMail();
     await waitFor(() => lists === 1);
     const mutation = actions.updateMessage("a:1", { action: "read" });
@@ -78,18 +78,16 @@ test("update quiesce drains real renderer/MCP sends and queued sync/mutations, r
       name: "reply_to_email", arguments: { id: "a:1", body: "Should not send" },
     } }) });
     assert.equal(blockedMcp.status, 503);
-    assert.equal(sends, 2); assert.equal(mutations, 0); assert.equal(drained, false);
+    assert.equal(sends, 1); assert.equal(mutations, 0); assert.equal(drained, false);
     syncGate.resolve();
     await sync; await mutation;
-    assert.equal(mutations, 1); assert.equal(drained, false, "MCP and renderer sends still hold the drain");
+    assert.equal(mutations, 1); assert.equal(drained, false, "The renderer send still holds the drain");
     sendGate.resolve();
     assert.equal((await rendererSend).status, 200);
-    const mcpResult = await (await mcpSend).json() as { result: { isError?: boolean } };
-    assert.ok(!mcpResult.result.isError);
     await drain;
     assert.equal(drained, true);
     backend.resumeMail(); holdSend = false;
-    assert.equal((await submit()).status, 200); assert.equal(sends, 3);
+    assert.equal((await submit()).status, 200); assert.equal(sends, 2);
     await t.test("bounded timeout leaves pending work intact; resumption permits later work", async () => {
       const pending = deferred();
       const work = actions.runMailWork(() => pending.promise);

@@ -64,9 +64,9 @@ The macOS menu provides standard Command shortcuts for editing, closing and quit
 
 Search cached mail in the current view with words, quoted phrases and combined filters. For example, `from:team@example.com is:unread after:2026-10-01 -subject:newsletter` combines sender, unread state, date and exclusion. Supported fields are `from:`, `to:`, `subject:`, `body:`, `account:`, `is:read`, `is:unread`, `is:pinned`, `before:` and `after:`. Dates use `YYYY-MM-DD` at midnight UTC; before excludes that day and after includes it. Account matches the full account ID, email address or custom label. Existing account, Gmail-label, relevance and view filters still apply.
 
-Select Commands in the sidebar, or press Command+K on macOS and Control+K elsewhere, to search app actions. Up/Down move through the command choices; Enter runs one. In the closed mail list, Up/Down select an email without opening or reading it. j/k remain available.
+Select Commands beside search, or press Command+K on macOS and Control+K elsewhere, to search app actions. Up/Down move through the command choices; Enter runs one. In the closed mail list, Up/Down select an email without opening or reading it. j/k remain available.
 
-Settings, Compose manages reusable plain-text templates and per-account signatures. Save preferences before composing. A new message or reply gets its account's signature. Changing From replaces an unchanged signature; edited text stays intact. Insert template appends text and only fills the subject if it is empty. These preferences use the encrypted local store.
+Settings, Writing manages reusable plain-text templates and per-account signatures. Save preferences before composing. A new message or reply gets its account's signature. Changing From replaces an unchanged signature; edited text stays intact. Insert template appends text and only fills the subject if it is empty. These preferences use the encrypted local store.
 
 Pin email in the toolbar or context menu marks a cached message locally. Search `is:pinned`, or choose Show pinned emails in this view in Commands, to find it. Pins do not change the provider mailbox or mail sorting.
 
@@ -90,7 +90,7 @@ The source build does not include a shared Google OAuth client. A maintainer or 
 2. Configure the consent screen and add your Google accounts as test users.
 3. Create an OAuth client of type Web application.
 4. Register `http://127.0.0.1:32145/api/oauth/google/callback` as its authorized redirect URI.
-5. In Emc², save the client ID and secret under Settings, Connection. A ticked `Saved` line under each field shows what is on disk, so an existing client ID never needs re-entering. Use Continue with Google for each account.
+5. In Emc², save the client ID and secret under Settings, Google and connections. A ticked `Saved` line under each field shows what is on disk, so an existing client ID never needs re-entering. Use Continue with Google for each account.
 
 Sign-in opens in your default browser. After consent, the desktop app refreshes and syncs the account. Access includes reading mail, marking it read, archiving and sending. Google apps left in external testing may require periodic reconnection. See [Google's authorization documentation](https://developers.google.com/workspace/gmail/api/auth/web-server).
 
@@ -98,7 +98,7 @@ Sign-in opens in your default browser. After consent, the desktop app refreshes 
 
 Jev classifies mail into Important and Other and rates relevance in one call per message. It is a decision model: it returns one option from a list you define rather than generated prose, which is why rows show a fixed label such as "Needs a reply".
 
-Pick the provider under Settings, Connection, then save that provider's API key beneath it. Sender rules still take priority, and Teach still overrides any classification.
+Pick the provider under Settings, Google and connections, then save that provider's API key beneath it. Sender rules still take priority, and Teach still overrides any classification.
 
 | Provider | Key from | Endpoint and model |
 | --- | --- | --- |
@@ -138,25 +138,45 @@ Custom account names can be edited in Settings, Accounts. Privacy keeps these la
 
 - Inbox combines all connected inboxes and splits them into Primary, Social, Promotions, Newsletters, Transactions and Updates tabs. Gmail mail follows Gmail's own categories; codes, security notices, support threads and replies always stay in Primary. Numbered account controls filter the view. Each sender shows its company logo, fetched once by the app from a favicon service and cached on this computer; senders on Gmail, Outlook, iCloud and similar hosts keep their initial, because their favicon would be the provider's logo rather than their own.
 - In a full-width list, comfortable rows use 28px for low relevance, 34px for medium, and 48px on two lines for high relevance; compact mode uses uniform 24px rows. Beside the reader, rows become two- or three-line cards. A 300px sender panel, which Sender details hides or shows, gives context, recent mail from the sender and recently opened mail. Measurements are recorded in `DESIGN.md`.
-- Search is the field centered in the mail header; `/` opens it. Inbox, Snoozed and Archive are listed in the left sidebar with the account filters.
+- Today's actions opens first, with manually confirmed Needs reply, Needs work and Waiting lists. Each item links to its evidence and changes only through explicit confirmation. Clients and projects groups selected conversations and decisions, with approval before combining accounts.
+- Search stays visible above mail, work and Settings; `/` focuses it. Typing from work or Settings searches All cached within the selected account. Inbox, Snoozed, Archive, Sent and All cached are listed in the left sidebar with account filters. Search normalizes Unicode, Latin accents and whitespace, and reuses documents in memory. The first text search builds the cache; no plaintext search index is written to disk.
 - Opened mail shows beside the list by default; Settings, Appearance can switch to Full width, which opens mail in place of the list. The same section offers System, Light and Dark modes, themes, accents and transparency.
 - In Settings, Appearance, choose Create theme to customize light and dark palettes with live preview. Advanced colors adjusts individual surfaces and text. Save keeps the theme on this device; Cancel restores the previous appearance. Select a custom theme to edit, duplicate, export or delete it. Import theme accepts an Emc² JSON file or pasted JSON. Exported files include both palettes and can be shared with another Emc² installation.
-- Local sorting works without an AI service. Add a Jev or OpenAI key under Settings, Connection to classify new mail with Jev by TypeSafe AI (used when its key is set) or OpenAI. Sender, subject and up to 220 characters of preview text go to that provider, a few messages at a time so a first sync stays quick. A failed call names the provider, then falls back to local sorting for the rest of that account's sync.
-- Teach applies an exact sender rule to existing and future mail. Removing a rule reapplies local sorting.
+- Local sorting works without an AI service. Add a Jev or OpenAI key under Settings, Google and connections to classify new mail with Jev by TypeSafe AI (used when its key is set) or OpenAI. Sender, subject and up to 220 characters of preview text go to that provider, a few messages at a time so a first sync stays quick. A failed call names the provider, then falls back to local sorting for the rest of that account's sync.
+- Teach previews an account-scoped sender rule and optional literal condition before saving. Future-only is the default; applying to existing matches requires its checkbox. The question condition checks question marks and does not infer intent. Removing a rule reapplies local sorting.
 - Archive removes mail from the Gmail inbox or moves IMAP mail to an archive folder. It does not delete mail.
 - Snooze is local to this client. Messages return to their category after the chosen time.
-- Compose and reply send plain text from the selected account. IMAP mail gets a Sent copy. If copying fails after delivery, the draft closes with a warning rather than encouraging a duplicate send.
+- Compose and reply send plain text from the selected account, with Cc and up to ten attachments (512 KiB per file, 1 MiB total). Reply all retains the other participants. IMAP mail gets a Sent copy. If copying fails after delivery, the draft closes with a warning rather than encouraging a duplicate send.
 - IMAP watches for inbox changes while the app runs. Gmail API checks its mailbox revision every 15 seconds and syncs only when it changes, with backoff after failures. Opening, manual sync and a five-minute background recovery sync fetch the full inbox; large mailboxes can take time. Gmail reuses cached bodies and checks labels.
-- Bodies preserve a bounded, safe subset of the sender's formatted layout, with readable plain text when formatting is unavailable or rejected. Sender scripts, forms, stylesheets and resource-loading CSS are excluded. Show images sits above the body; images stay blocked until activated for that opening. Show images also works while personal text is hidden; image descriptions and captions stay masked. Image URLs containing detected private information remain blocked in that mode. Image pixels may contain personal information. Loading remote images can tell the sender you opened the email. HTTP and HTTPS links open in your default browser on desktop. Personal-information hiding suppresses links containing known recipient names or email addresses. Attachments and rich-text composition are not included. Search covers synced mail and retained archived messages.
-- Drafts remain in memory. Closing warns about unsent content; a crash does not preserve drafts.
+- Bodies preserve a bounded, safe subset of the sender's formatted layout, with readable plain text when formatting is unavailable or rejected. Sender scripts, forms, stylesheets and resource-loading CSS are excluded. Show images sits above the body; images stay blocked until activated for that opening. Show images also works while personal text is hidden; image descriptions and captions stay masked. Image URLs containing detected private information remain blocked in that mode. Image pixels may contain personal information. Loading remote images can tell the sender you opened the email. HTTP and HTTPS links open in your default browser on desktop. Personal-information hiding suppresses links containing known recipient names or email addresses. Received attachments show metadata and an explicit download action when their bytes fit the import limits. Rich-text composition is not included. Search covers the chosen cached view, including retained archives and explicitly imported Sent evidence.
+- Drafts autosave in the encrypted store, including recipients and attachment bytes. Closing retains the draft; discarding is separate. Unknown send outcomes remain visible to prevent accidental duplicates.
 
 ## MCP
 
 AI clients can read synced mail and reply through the running app at `http://127.0.0.1:32145/mcp`. The server uses MCP Streamable HTTP. It shares the app's encrypted store and provider operations; no separate database process is needed.
 
-1. Open Settings, MCP and turn on Enable MCP. It is off by default.
-2. Copy the endpoint and bearer token, or copy a client configuration directly from Settings.
-3. Enable Allow sending replies only if you want clients to send real email immediately. It is separately off by default. Reading can optionally mark a message read, and archive/mark-read tools can change mailbox state even when sending is disabled.
+1. Open Settings, AI and agents and turn on Enable MCP. It is off by default.
+2. Open Agent review. Create a grant for the exact accounts and tools that client needs, then copy its credential. The legacy Settings token grants no account access.
+3. Review prepared drafts, sends, read changes and archives in Agent review’s Review queue. Each proposal needs separate approval. Approving a reply saves it to Drafts and opens it for editing; agents never send, so only your own Send delivers it.
+
+Each grant also offers **Bring your own key** for OpenAI-compatible providers.
+Choose OpenAI (default model `gpt-4.1-mini`), DeepSeek (`deepseek-chat`), or Other
+OpenAI-compatible with a custom public HTTPS base URL. Models stay editable.
+Save key encrypts the key on this device; it does not test the connection.
+Leave the key blank to keep it for the same endpoint. Changing the endpoint
+requires a new key. Remove key deletes the settings; revoking the agent also
+deletes them.
+
+To prepare a reply, the grant needs `read_email` and `propose_draft` for the
+selected account. Select one received email from the searchable local cache,
+optionally enter a short instruction, check the displayed provider destination,
+and click Prepare draft. That click sends only the selected email's subject,
+sender address, recipient and plain text (up to 24,000 characters), plus your
+instruction, to that provider. Attachments and other mail are excluded. Review
+the resulting pending proposal in action history and approve it to create a
+local draft. Nothing is sent. Existing approval requires MCP enabled in
+Settings; saving a key and preparing a proposal do not enable MCP or sending.
+BYOK testing and independent review are pending; see [ADR 0045](docs/adr/0045-agent-review-byok.md).
 
 For Claude Code:
 
@@ -177,13 +197,19 @@ For JSON-config clients that support Streamable HTTP `url` and `headers` entries
 }
 ```
 
-Replace `<token>` with the token from Settings. Client support and configuration locations vary by version. Codex and other MCP clients should use the same HTTP URL and Authorization header through their HTTP-server settings. The app must remain running.
+Replace `<token>` with that agent's credential. Client support and configuration locations vary by version. Codex and other MCP clients should use the same HTTP URL and Authorization header through their HTTP-server settings. The app must remain running.
 
-Tools: `list_accounts`, `list_emails`, `search_emails`, `read_email`, `get_thread`, `reply_to_email`, `archive_email`, and `mark_read`. Lists return summaries with ISO dates and numeric offset pagination (25 by default, maximum 100). Search matches sender, address, subject and plain-text body in synced mail. Threads contain only cached messages from the same account; Gmail supplies thread IDs, while mail without one returns only the selected message. Older cached mail may lack Reply-To, Cc or References until fetched again. Reply-all includes the original To/Cc addresses except your own, plus optional extra Cc. IMAP replies save a Sent copy; a Sent-copy warning means delivery succeeded and you must not resend.
+For OpenCode, each grant in Agent permissions and review has a Set up OpenCode button. On the desktop app it saves that grant's connection into your OpenCode user config (`~/.config/opencode/opencode.json`, or an existing `opencode.jsonc`) on this computer, editing only the `mcp.emc2` entry and keeping a private backup beside the file. It enables MCP on the same click when MCP is off. An existing different `emc2` connection is replaced only after you confirm. Restart OpenCode, then run `opencode mcp list`. If the app cannot find one safe config file to edit, or in the browser target, open Advanced: manual setup to copy the JSON instead: if you have no user config yet, save the copied JSON as one; if you already have one, add only the copied `mcp.emc2` entry to its existing `mcp` object and never the whole root. Never use a project config. The saved config contains that grant's credential, so keep it private.
 
-The listener is bound to `127.0.0.1`. A separate random bearer token is encrypted in the same SQLite store as mail and credentials, protected by Electron safeStorage on desktop. It is never stored in `settings.env`. Requests with browser origins or non-local hostnames are rejected. Disabling MCP blocks access immediately; regenerating the token invalidates the previous token on the next request. Keep copied client configurations private because they contain the token. Anyone with it can read your cached mail and change read/archive state; opt-in sending also lets them send replies. Mail text is untrusted input: an email's instructions should not authorize actions by your AI client.
+Tools: `list_accounts`, `list_emails`, `search_emails`, `read_email`, `get_thread`, `propose_draft`, `reply_to_email`, `archive_email`, `mark_read`, `list_projects`, `list_commitments`, `create_project`, and `track_commitment`. Each requires its named grant and permitted account. Email lists return summaries with ISO dates and numeric offset pagination (25 by default, maximum 100). Search matches sender, address, subject and plain-text body in cached mail. Threads link cached messages within one account using Gmail thread IDs or Message-ID references and report missing evidence. Older cached mail may lack Reply-To, Cc or References until fetched again. Reply-all includes the original To/Cc addresses except your own, plus optional extra Cc. IMAP replies save a Sent copy; a Sent-copy warning means delivery succeeded and you must not resend.
 
-MCP changes notify the open desktop UI to refresh. Replies use the same send path as the compose window. Sent messages are not added to the local inbox cache, matching the existing UI send behavior.
+The listener is bound to `127.0.0.1`. Agent credentials and action history are encrypted in the same SQLite store as mail, protected by Electron safeStorage on desktop. Credentials are never stored in `settings.env`. Requests with browser origins or non-local hostnames are rejected. Disabling MCP or revoking a grant blocks its access and pending approvals. Keep copied client configurations private because they contain credentials. A grant permits its selected reads, proposal preparation and any explicitly selected local creation tools. Mail-action approval rechecks the exact payload, current grant and conversation evidence before execution. Mail text is untrusted input and cannot authorize an action.
+
+Local work creation is off by default, including for existing grants and the Reply assistant preset. In Advanced: allowed tools, select `create_project` and/or `track_commitment` only if the agent may save that local work immediately without per-item approval. Select `list_projects` and `list_commitments` separately for discovery and readback. These tools require an explicit `accountId`. Projects need one or more `sourceMailIds` from that account. Commitments need `sourceMailId`, `text`, `reason`, and one open status: `needs-reply`, `needs-work`, or `waiting`; optional fields are same-account `evidenceMailIds`, a single-account `projectId`, a `dueDate` (YYYY-MM-DD) or legacy `dueAt` (epoch milliseconds), and `followUpAt` (epoch milliseconds displayed in local time). They appear in the existing Projects, Today and Calendar views. This does not schedule an external calendar event or operating-system notification.
+
+Each create requires a caller-generated UUID `requestId`. Generate it once for each intended project or deliverable, and retain it with the exact input. Identical retries by the same agent and tool return the same unchanged record. Different input or later user edits cause an error; a new UUID creates a distinct item even when its text matches. After an uncertain response, read saved work and retry only the identical request with its original UUID. Revocation, removed accounts or unavailable sources block retries. Work lists omit mixed-account projects, commitments linked to them, and items whose evidence is unavailable or belongs to another account. Lists include closed commitments for readback. These grants never complete, cancel, reopen or update work, approve proposals, or send mail. See [ADR 0047](docs/adr/0047-agent-local-work-creation.md).
+
+Approved replies use the same send path as the compose window. Sent imports remain explicit and separate from Inbox reconciliation. An unknown send result consumes the approval and requires a manual delivery check; it never triggers an automatic resend.
 
 ## Keyboard
 
@@ -266,3 +292,9 @@ The macOS Apple silicon candidate builds as a DMG and ZIP. Its packaged startup 
 Strict TypeScript and production builds pass. Tests cover sender-rule precedence, visual classification, header validation, message-link rendering and privacy, desktop navigation restrictions, configuration preservation, and MCP authentication, mail reads and mocked reply operations. `node scripts/check-mcp.mjs` checks an MCP initialize/tools-list handshake against a separate temporary server and verifies requests without a token get 401. Development and packaged native startup checks passed, including encrypted database access and rejection of requests outside the desktop session. The email-link repair was tested in a browser with synthetic mail: mouse and keyboard activation, quoted URLs, address privacy and escaped HTML. Native Windows and macOS browser handoff were not tested for this repair. Real account sign-in, mailbox operations and delivery remain unverified until provider credentials are supplied.
 
 Video frames at 25s, 65s, 104s, 140s and 178s were inspected and measured at native resolution. The transcript is `.reference/transcript.txt`. The video's future Cloudflare mailbox idea is outside this version.
+
+## Command line
+
+Use the [Emc² CLI](docs/cli.md) from a Node 24 source checkout. Run
+`npm run cli -- help`. It connects to the running app through scoped MCP
+grants; the desktop installer does not add a command to your PATH.

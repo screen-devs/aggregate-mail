@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { renderToStaticMarkup } from "react-dom/server";
+import { act, useState } from "react";
+import { JSDOM } from "jsdom";
 import { ComposePanel, sendCompose, type Compose } from "./compose/ComposePanel";
 
 const initial: Compose = {
@@ -41,12 +42,38 @@ function client(
   };
 }
 
-const panel = (draft: Compose, onSend: () => void, setDraft = (_draft: Compose) => {}, onClose = () => {}) =>
-  ComposePanel({
-    draft, onSend, setDraft, onClose, onDiscard: onClose, onRetry() {}, onSaveCopy() {},
-    progress: { phase: "saved", message: "Draft saved." }, busy: false,
-    accounts: [{ id: "synthetic", email: "sender@example.com", provider: "imap" }],
-  });
+async function panel(draft: Compose, onSend: () => void, setDraft = (_draft: Compose) => {}, onClose = () => {}) {
+  const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/" });
+  const globals = { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true };
+  const old = new Map(Object.keys(globals).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
+  const { createRoot } = await import("react-dom/client");
+  const container = dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  function Editor() {
+    const [value, update] = useState(draft);
+    return <ComposePanel draft={value} onSend={onSend} setDraft={(next) => { update(next); setDraft(next); }} onClose={onClose} onDiscard={onClose} onRetry={() => {}} onSaveCopy={() => {}}
+      progress={{ phase: "saved", message: "Draft saved." }} busy={false} accounts={[{ id: "synthetic", email: "sender@example.com", provider: "imap" }]} />;
+  }
+  await act(async () => root.render(<Editor />));
+  return {
+    container, form: container.querySelector("form")!,
+    async click(button: HTMLElement) { await act(async () => button.click()); },
+    async submit() { await act(async () => container.querySelector("form")!.dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }))); },
+    async edit(selector: string, value: string) {
+      const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(selector)!;
+      const prototype = input.tagName === "TEXTAREA" ? dom.window.HTMLTextAreaElement.prototype : input.tagName === "SELECT" ? dom.window.HTMLSelectElement.prototype : dom.window.HTMLInputElement.prototype;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
+        input.dispatchEvent(new dom.window.Event(input.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
+      });
+    },
+    async close() {
+      await act(async () => root.unmount()); dom.window.close();
+      for (const [key, descriptor] of old) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
+    },
+  };
+}
 
 test("a lost response retains the draft and declined resend submits no second request", async (t) => {
   const requests: unknown[] = [];
@@ -102,53 +129,49 @@ test("click and Enter form submissions share the unknown-send confirmation", asy
   let requests = 0;
   const c = client(async () => { requests++; return {}; }, undefined, { ...initial, sendUnknown: true });
   let pending: Promise<void> | undefined;
-  const form = panel(c.draft!, () => { pending = c.submit(); }).props.children;
-  const actions = form.props.children.find((child: { props?: { className?: string } }) => child?.props?.className === "form-actions");
-  const button = actions.props.children[1];
-  assert.equal(button.props.type, "submit");
-  assert.equal(button.props.onClick, undefined);
-  for (const submitter of [button, null]) {
-    form.props.onSubmit({ preventDefault() {}, currentTarget: { reportValidity: () => true }, nativeEvent: { submitter } });
-    await pending;
-    assert.equal(requests, 0);
-    assert.equal(c.draft?.sendUnknown, true);
-  }
-  assert.equal(c.prompts.length, 2);
-  c.approve();
-  form.props.onSubmit({ preventDefault() {}, currentTarget: { reportValidity: () => true } });
-  await pending;
-  assert.equal(requests, 1);
+  const ui = await panel(c.draft!, () => { pending = c.submit(); });
+  try {
+    const button = ui.form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    assert.equal(button.type, "submit");
+    for (const submit of [() => ui.click(button), () => ui.submit()]) {
+      await submit(); await pending;
+      assert.equal(requests, 0);
+      assert.equal(c.draft?.sendUnknown, true);
+    }
+    assert.equal(c.prompts.length, 2);
+    c.approve(); await ui.submit(); await pending;
+    assert.equal(requests, 1);
+  } finally { await ui.close(); }
 });
 
 test("editing an unknown draft preserves its warning and the next send guard", async () => {
   let requests = 0;
   const c = client(async () => { requests++; return {}; }, undefined, { ...initial, sendUnknown: true });
-  for (const [index, value] of [[0, "synthetic"], [1, "edited@example.com"], [2, "Edited subject"], [3, "Edited body"]] as const) {
-    const fields = panel(c.draft!, () => {}, c.setDraft).props.children.props.children.filter(Boolean);
-    const control = index === 3 ? fields[index] : fields[index].props.children[1];
-    control.props.onChange({ target: { value } });
-    assert.equal(c.draft?.sendUnknown, true);
-  }
-  assert.equal(c.draft?.body, "Edited body");
-  const html = renderToStaticMarkup(panel(c.draft!, () => {}));
-  assert.match(html, /Send status unknown/);
-  assert.match(html, /may already have been sent/);
-  await c.submit();
-  assert.equal(requests, 0);
+  const ui = await panel(c.draft!, () => {}, c.setDraft);
+  try {
+    for (const [selector, value] of [["select", "synthetic"], ['input[type="email"]', "edited@example.com"], ['input[maxlength="998"]', "Edited subject"], ["textarea", "Edited body"]]) {
+      await ui.edit(selector, value);
+      assert.equal(c.draft?.sendUnknown, true);
+    }
+    assert.equal(c.draft?.body, "Edited body");
+    assert.match(ui.container.textContent!, /Send status unknown/);
+    assert.match(ui.container.textContent!, /may already have been sent/);
+    await c.submit(); assert.equal(requests, 0);
+  } finally { await ui.close(); }
 });
 
-test("pre-submission form validation never calls send", () => {
+test("pre-submission form validation never calls send", async () => {
   let sends = 0;
-  const form = panel({ ...initial, to: "invalid", body: "" }, () => { sends++; }).props.children;
-  const fields = form.props.children.filter(Boolean);
-  assert.equal(fields[1].props.children[1].props.type, "email");
-  assert.equal(fields[1].props.children[1].props.required, true);
-  assert.equal(fields[3].props.required, true);
-  form.props.onSubmit({ preventDefault() {}, currentTarget: { reportValidity: () => false } });
-  assert.equal(sends, 0);
+  const ui = await panel({ ...initial, to: "invalid", body: "" }, () => { sends++; });
+  try {
+    assert.equal(ui.form.querySelector<HTMLInputElement>('input[type="email"]')!.required, true);
+    assert.equal(ui.form.querySelector<HTMLTextAreaElement>("textarea")!.required, true);
+    assert.equal(ui.form.reportValidity(), false);
+    await ui.submit(); assert.equal(sends, 0);
+  } finally { await ui.close(); }
 });
 
-test("explicitly discarding an unknown draft warns about possible delivery without calling it unsent", (t) => {
+test("explicitly discarding an unknown draft warns about possible delivery without calling it unsent", async (t) => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, "confirm");
   const prompts: string[] = [];
   let approved = false;
@@ -160,15 +183,13 @@ test("explicitly discarding an unknown draft warns about possible delivery witho
     else Reflect.deleteProperty(globalThis, "confirm");
   });
   let closes = 0;
-  const dialog = panel({ ...initial, to: "", subject: "", body: "", sendUnknown: true }, () => {}, undefined, () => { closes++; });
-  const discard = dialog.props.children.props.children.at(-1).props.children[1];
-  discard.props.onClick();
-  assert.equal(closes, 0);
-  assert.match(prompts[0], /already.*sent/);
-  assert.doesNotMatch(prompts[0], /unsent/);
-  approved = true;
-  discard.props.onClick();
-  assert.equal(closes, 1);
+  const ui = await panel({ ...initial, to: "", subject: "", body: "", sendUnknown: true }, () => {}, undefined, () => { closes++; });
+  try {
+    const discard = [...ui.form.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Discard draft")!;
+    await ui.click(discard); assert.equal(closes, 0);
+    assert.match(prompts[0], /already.*sent/); assert.doesNotMatch(prompts[0], /unsent/);
+    approved = true; await ui.click(discard); assert.equal(closes, 1);
+  } finally { await ui.close(); }
 });
 
 test("send success and provider warnings survive a separate inbox refresh failure", async () => {

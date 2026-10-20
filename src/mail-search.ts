@@ -1,6 +1,32 @@
 import type { Account, Mail } from "../shared/types";
 
-type SearchTerm = (mail: Mail) => boolean;
+type SearchDocument = { raw: string[]; canonical: string[]; folded: string[] };
+type SearchTerm = (mail: Mail, document: SearchDocument) => boolean;
+
+const documents = new WeakMap<Mail, SearchDocument>();
+const emptyDocument: SearchDocument = { raw: [], canonical: [], folded: [] };
+const nonAscii = /[^\x00-\x7f]/;
+
+function canonical(value: string): string {
+  const lower = value.toLowerCase();
+  return (nonAscii.test(lower) ? lower.normalize("NFC") : lower).replace(/\s+/gu, " ").trim();
+}
+
+function foldLatin(value: string): string {
+  if (!nonAscii.test(value)) return value;
+  // Preserve marks in scripts where removing them changes words, such as Thai.
+  return value.normalize("NFD").replace(/(\p{Script=Latin})\p{M}+/gu, "$1").normalize("NFC");
+}
+
+function indexMail(mail: Mail): SearchDocument {
+  const raw = [mail.sender, mail.address, mail.to, mail.cc ?? "", mail.subject, mail.preview, mail.body];
+  const cached = documents.get(mail);
+  if (cached && raw.every((value, index) => value === cached.raw[index])) return cached;
+  const normalized = raw.map(canonical);
+  const document = { raw, canonical: normalized, folded: normalized.map(foldLatin) };
+  documents.set(mail, document);
+  return document;
+}
 
 const fields = new Set(["from", "to", "subject", "body", "account", "is", "before", "after"]);
 const error = "Invalid search. Check quotes, fields, and dates.";
@@ -44,6 +70,7 @@ export function compileMailSearch(query: string, accounts: Account[] = []): { ma
   if (!tokens) return { matches: () => false, error };
   const terms: SearchTerm[] = [];
   const lower = (value: string) => value.toLowerCase();
+  let needsDocument = false;
 
   for (const raw of tokens) {
     let token = raw;
@@ -72,29 +99,29 @@ export function compileMailSearch(query: string, accounts: Account[] = []): { ma
       term = prefix === "before" ? (mail) => mail.date < date : (mail) => mail.date >= date;
     } else if (prefix === "account") {
       const needle = lower(value);
+      const normalizeName = value.includes("@") ? canonical : (text: string) => foldLatin(canonical(text));
+      const nameNeedle = normalizeName(value);
       const ids = new Set(accounts.filter((account) =>
-        [account.id, account.email, account.name ?? ""].some((alias) => lower(alias) === needle),
+        [account.id, account.email].some((alias) => lower(alias) === needle) ||
+        (!!account.name && normalizeName(account.name) === nameNeedle),
       ).map((account) => account.id));
       term = (mail) => ids.has(mail.accountId);
-    } else if (prefix === "from") {
-      const needle = lower(value);
-      term = (mail) => `${mail.sender} ${mail.address}`.toLowerCase().includes(needle);
-    } else if (prefix === "to") {
-      const needle = lower(value);
-      term = (mail) => `${mail.to} ${mail.cc ?? ""}`.toLowerCase().includes(needle);
-    } else if (prefix === "subject") {
-      const needle = lower(value);
-      term = (mail) => mail.subject.toLowerCase().includes(needle);
-    } else if (prefix === "body") {
-      const needle = lower(value);
-      term = (mail) => mail.body.toLowerCase().includes(needle);
     } else {
-      const needle = lower(raw.startsWith("-") ? token : raw);
-      term = (mail) => `${mail.sender} ${mail.address} ${mail.to} ${mail.cc ?? ""} ${mail.subject} ${mail.preview} ${mail.body}`
-        .toLowerCase().includes(needle);
+      const text = fields.has(prefix) ? value : token;
+      const exact = text.includes("@");
+      const needle = exact ? canonical(text) : foldLatin(canonical(text));
+      if (!needle) return { matches: () => false, error };
+      const indexes = prefix === "from" ? [0, 1] : prefix === "to" ? [2, 3]
+        : prefix === "subject" ? [4] : prefix === "body" ? [6] : [0, 1, 2, 3, 4, 5, 6];
+      needsDocument = true;
+      term = (_mail, document) => indexes.some((index) =>
+        (exact ? document.canonical : document.folded)[index].includes(needle));
     }
-    terms.push(negative ? (mail) => !term(mail) : term);
+    terms.push(negative ? (mail, document) => !term(mail, document) : term);
   }
 
-  return { matches: (mail) => terms.every((term) => term(mail)) };
+  return { matches: (mail) => {
+    const document = needsDocument ? indexMail(mail) : emptyDocument;
+    return terms.every((term) => term(mail, document));
+  } };
 }

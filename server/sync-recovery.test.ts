@@ -433,6 +433,7 @@ if (!process.env.EMC2_RECOVERY_TEST_CHILD) {
         const db = new DatabaseSync(path.join(process.env.MAIL_DATA_DIR!, "mail.sqlite"));
         const insert = db.prepare("INSERT OR REPLACE INTO records VALUES (?,?,?)");
         const seed = (values: Mail[]) => { db.exec("BEGIN"); for (const m of values) insert.run("mail", m.id, encrypt(m)); db.exec("COMMIT"); };
+        const writers = new WeakSet<DatabaseSync>();
         let writes = 0, commits = 0, gets = 0, lists = 0, size = 100, changed = false;
         seed(rows.slice(0, size));
         const originalPrepare = DatabaseSync.prototype.prepare, originalExec = DatabaseSync.prototype.exec;
@@ -440,11 +441,11 @@ if (!process.env.EMC2_RECOVERY_TEST_CHILD) {
           const statement = originalPrepare.call(this, sql);
           if (sql === "INSERT OR REPLACE INTO records VALUES (?,?,?)") {
             const run = statement.run.bind(statement);
-            statement.run = (...args) => { if (args[0] === "mail") writes++; return run(...args as SQLInputValue[]); };
+            statement.run = (...args) => { if (args[0] === "mail") { writes++; writers.add(this); } return run(...args as SQLInputValue[]); };
           }
           return statement;
         });
-        mock.method(DatabaseSync.prototype, "exec", function (this: DatabaseSync, sql: string) { if (sql === "COMMIT") commits++; return originalExec.call(this, sql); });
+        mock.method(DatabaseSync.prototype, "exec", function (this: DatabaseSync, sql: string) { if (sql === "COMMIT" && writers.has(this)) commits++; return originalExec.call(this, sql); });
         mock.method(google, "gmail", () => ({ users: { labels: { list: async () => ({ data: { labels: [] } }) }, messages: {
           list: async (input: { labelIds: string[]; pageToken?: string }) => {
             lists++; const offset = Number(input.pageToken || 0);
@@ -460,10 +461,10 @@ if (!process.env.EMC2_RECOVERY_TEST_CHILD) {
           // Install counters again through the same actual SQLite boundary.
           const countPrepare = mock.method(DatabaseSync.prototype, "prepare", function (this: DatabaseSync, sql: string) {
             const statement = originalPrepare.call(this, sql);
-            if (sql === "INSERT OR REPLACE INTO records VALUES (?,?,?)") { const run = statement.run.bind(statement); statement.run = (...args) => { if (args[0] === "mail") writes++; return run(...args as SQLInputValue[]); }; }
+            if (sql === "INSERT OR REPLACE INTO records VALUES (?,?,?)") { const run = statement.run.bind(statement); statement.run = (...args) => { if (args[0] === "mail") { writes++; writers.add(this); } return run(...args as SQLInputValue[]); }; }
             return statement;
           });
-          mock.method(DatabaseSync.prototype, "exec", function (this: DatabaseSync, sql: string) { if (sql === "COMMIT") commits++; return originalExec.call(this, sql); });
+          mock.method(DatabaseSync.prototype, "exec", function (this: DatabaseSync, sql: string) { if (sql === "COMMIT" && writers.has(this)) commits++; return originalExec.call(this, sql); });
           mock.method(google, "gmail", () => ({ users: { labels: { list: async () => ({ data: { labels: [] } }) }, messages: {
             list: async (input: { labelIds: string[]; pageToken?: string }) => {
               lists++; const offset = Number(input.pageToken || 0);

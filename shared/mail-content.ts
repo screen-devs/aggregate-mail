@@ -1,6 +1,8 @@
 import { Parser } from "htmlparser2";
 
 export const MAIL_HTML_LIMIT = 256_000;
+// Plain-text conversion leaves image sources as [url]; previews drop them, including one cut off by the stored preview length.
+export const previewText = (text: string) => text.replace(/\[(?:https?|cid):[^\]\s]*(?:\]|$)/gi, " ").replace(/\s+/g, " ").trim();
 export const MAIL_NODE_LIMIT = 4_000;
 // Newsletters nest tables about 50 deep; the node limit bounds the total work.
 export const MAIL_DEPTH_LIMIT = 96;

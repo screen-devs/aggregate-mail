@@ -95,6 +95,11 @@ try {
     "reply_to_email",
     "archive_email",
     "mark_read",
+    "propose_draft",
+    "list_projects",
+    "list_commitments",
+    "create_project",
+    "track_commitment",
   ]);
   console.log(`tools/list: 200, ${tools.length} tools (${tools.join(", ")})`);
   const unauthorized = await rpc("tools/list", {}, false);
