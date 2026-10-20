@@ -40,6 +40,8 @@ export function FormattedMail({ html, showImages, renderText, redactText, privac
       if (typeof value === "string" && (value === "0" || value.endsWith("px") && parseFloat(value) < 6))
         delete style[property];
     }
+    // Sender sizes are already bounded; scale absolute sizes once, including legacy fonts.
+    if (style.fontSize) style.fontSize = `calc(${typeof style.fontSize === "number" ? `${style.fontSize}px` : style.fontSize} * var(--text-scale, 1))`;
     // Quotes take the app's own inset and bar, so nested replies keep their width.
     if (tag === "blockquote") for (const property of Object.keys(style) as (keyof CSSProperties)[])
       if (/^(margin|padding|border)/.test(property)) delete style[property];

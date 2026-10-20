@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import type { Mail } from "../shared/types";
-import { densityShortcut, filterMail, markMailRead, matchesLabel, selectedMail } from "./mail-ui";
+import { textSizeShortcut, filterMail, markMailRead, matchesLabel, selectedMail } from "./mail-ui";
 import { defaults, interactionActions, matches } from "./interaction";
 
 const source = ts.createSourceFile("App.tsx", readFileSync(new URL("./App.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -64,12 +64,13 @@ function reader(opened = true, accountFilter = "a", selectedId: string | null = 
     pendingReads: { current: new Set<string>() },
     api: async (...args: unknown[]) => { requests.push(args); },
     reload: async () => {},
-    updateInstalling: false, draftPicker: false, contextMenu: false, palette: false, settings: false, compose: false, teach: false,
+    quickSource: null, view: "inbox", busy: false, updateInstalling: false, draftPicker: false, contextMenu: false, palette: false, settings: false, workView: false, compose: false, teach: false,
     snooze: false, trashMail: false, trashLock: { current: false }, shortcuts: false, labelMail: false, connecting: false,
-    HTMLElement: Element, Error, densityShortcut, filterMail, markMailRead, tabOf: () => "primary", search: { matches: () => true },
+    HTMLElement: Element, Error, textSizeShortcut, filterMail, markMailRead, tabOf: () => "primary", search: { matches: () => true },
     interaction: defaults, interactionActions, matches, window: { desktop: { platform: "darwin" } },
+    archive: (_mail: Mail) => {}, startCompose: (_mail?: Mail) => {}, showSnooze: (_mail: Mail) => {}, setTeach: (_mail: Mail) => {},
     markRead: (_mail: Mail) => {}, openMail: (_mail: Mail) => {},
-    openReaderMail: (mail: Mail) => scope.openMail(mail), navigationBlocked: false, settingsModal: false,
+    openReaderMail: (mail: Mail) => scope.openMail(mail), navigationBlocked: false, settingsModal: false, workModal: false,
   };
   scope.markRead = handler("markRead", scope);
   scope.openMail = handler("openMail", scope);
@@ -156,13 +157,30 @@ test("editors, modifiers, settings and dialogs guard navigation and account shor
       assert.equal(scope.accountFilter, "a");
       assert.deepEqual(requests, []);
     }
-    for (const guard of ["contextMenu", "settings", "compose", "teach", "snooze", "shortcuts", "labelMail"] as const) {
+    for (const guard of ["contextMenu", "settings", "workModal", "compose", "teach", "snooze", "shortcuts", "labelMail"] as const) {
       const { scope, key: press, requests } = reader();
       scope[guard] = true;
       press(key);
       assert.equal(scope.selectedId, a.id);
       assert.equal(scope.accountFilter, "a");
       assert.deepEqual(requests, []);
+    }
+  }
+});
+
+test("Today mail-action shortcuts require an opened source and retain input, modal and busy guards", () => {
+  for (const key of ["r", "e", "s", "m"]) {
+    for (const guard of ["INPUT", "TEXTAREA", "SELECT", "workModal", "quickSource", "compose", "teach", "snooze", "busy", "closed", "calendar", "projects", "agents"]) {
+      const { scope, key: press } = reader();
+      scope.workView = true; scope.view = "actions";
+      const actions: string[] = [];
+      scope.archive = scope.startCompose = scope.showSnooze = scope.setTeach = () => { actions.push(key); };
+      if (guard === "closed") scope.opened = false;
+      else if (["calendar", "projects", "agents"].includes(guard)) scope.view = guard;
+      else if (["workModal", "compose", "teach", "snooze", "busy"].includes(guard)) Object.assign(scope, { [guard]: true });
+      else if (guard === "quickSource") Object.assign(scope, { quickSource: "mail" });
+      press(key, /^[A-Z]+$/.test(guard) ? { target: new Element(guard) } : {});
+      assert.deepEqual(actions, [], `${key}: ${guard}`);
     }
   }
 });

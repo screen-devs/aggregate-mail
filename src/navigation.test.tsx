@@ -27,7 +27,7 @@ async function mount(native = false, setup?: (state: State, storage: Storage) =>
     id, subject, accountId, category, remoteId: id, sender: "Sender", address: "sender@example.com",
     to: "reader@example.com", preview: subject, body: subject, date: 1000, unread: true,
     relevance: 2, reason: "", archived: false, snoozedUntil: null,
-    html: null, images: [{ src: "https://images.example.com/photo.png", alt: "Photo" }],
+    html: null, images: [{ src: "https://images.example.com/photo.png", alt: "Photo" }], attachments: [],
   });
   const state: State = {
     accounts: [{ id: "a", email: "first@example.com", provider: "imap" },
@@ -68,6 +68,7 @@ async function mount(native = false, setup?: (state: State, storage: Storage) =>
   let releaseRead: (() => void) | undefined;
   globalThis.fetch = async (input, options) => {
     const url = String(input);
+    if (url.endsWith("/drafts") && !options?.method) return { ok: true, json: async () => [] } as unknown as Response;
     if (url.includes("/drafts") && ["POST", "PUT"].includes(options?.method || "")) {
       savedDraft = { ...JSON.parse(String(options?.body)), id: "synthetic-draft", accountId: url.split("/")[3],
         revision: (savedDraft?.revision || 0) + 1, updatedAt: 1 };
@@ -87,6 +88,8 @@ async function mount(native = false, setup?: (state: State, storage: Storage) =>
       if (mail) mail.unread = false;
     }
     return { ok: true, json: async () => url === "/api/state" ? { ...state, csrf: "synthetic" } :
+      url === "/api/workspace" ? { commitments: [], projects: [], decisions: [], proposals: [], coverage: [] } :
+      url === "/api/agent/grants" ? [] : url === "/api/mcp" ? {enabled:false,allowSending:false,token:null} :
       url === "/api/sync" ? { errors: [] } : {} } as Response;
   };
   const { createRoot } = await import("react-dom/client");
@@ -94,9 +97,10 @@ async function mount(native = false, setup?: (state: State, storage: Storage) =>
   const container = dom.window.document.getElementById("root")!;
   const root = createRoot(container);
   await act(async () => root.render(<App />));
+    await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
   const button = (label: string): HTMLButtonElement => {
     if (label === "Filter accounts") return accountButtons().find(item => item.getAttribute("aria-pressed") === "true")!;
-    const found = [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
+    const found = [...container.querySelectorAll<HTMLButtonElement>(".settings-navigation button"), ...container.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
       button.getAttribute("aria-label") === label || button.textContent?.trim() === label || button.querySelector(".sidebar-name, .tab-label")?.textContent === label || [...button.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join("").trim() === label);
     assert.ok(found, `button ${label}`);
     return found;
@@ -486,14 +490,14 @@ test("Settings persist opening mode and custom keys while single-click opens and
     assert.equal(app.title(), undefined);
     assert.equal(app.mutations.length, 0);
     await app.click(app.button("Settings"));
-    const opening = app.container.querySelector<HTMLSelectElement>('[data-interaction-settings] select')!;
-    await act(async () => { opening.value = "single"; opening.dispatchEvent(new app.window.Event("change", { bubbles: true })); });
+    await app.click(app.button("Keyboard and mouse"));
+    await app.click(app.button("Single click"));
     const search = [...app.container.querySelectorAll<HTMLInputElement>('[data-interaction-settings] input')]
       .find((input) => input.value === "/")!;
     search.focus();
     await act(async () => search.dispatchEvent(new app.window.KeyboardEvent("keydown", { key: "f", bubbles: true, cancelable: true })));
     assert.equal(search.value, "F");
-    assert.equal(app.container.querySelector('[aria-label="Search all synced mail"]'), null);
+    assert.ok(app.container.querySelector('input[aria-describedby="mail-search-help"]'), "global search stays available");
     const saved = JSON.parse(app.storage.getItem("emc2.interaction.v1")!);
     assert.equal(saved.opening, "single"); assert.equal(saved.shortcuts.search.key, "f");
     const preferences = app.storage.getItem("emc2.interaction.v1");
@@ -517,7 +521,7 @@ test("Settings persist opening mode and custom keys while single-click opens and
     assert.equal(app.title(), undefined);
     assert.equal(app.mutations.length, 0, "Escape does not run a mail action");
     assert.equal(app.container.querySelector('[role="dialog"]'), null);
-    assert.equal(app.container.querySelector('[aria-label="Search all synced mail"]'), null);
+    assert.ok(app.container.querySelector('input[aria-describedby="mail-search-help"]'), "global search stays available");
     const row = app.container.querySelector<HTMLElement>("[id='mail-a:1']")!;
     await act(async () => {
       row.dispatchEvent(new app.window.MouseEvent("click", { detail: 1, bubbles: true }));
@@ -531,7 +535,7 @@ test("Settings persist opening mode and custom keys while single-click opens and
     assert.equal(app.title(), "Alpha"); assert.equal(app.mutations.length, 1);
     await app.key("Escape");
     await app.key("f");
-    assert.ok(app.container.querySelector('[aria-label="Search all synced mail"]'));
+    assert.ok(app.container.querySelector('input[aria-describedby="mail-search-help"]'));
   } finally { await app.close(); }
 });
 
@@ -552,8 +556,8 @@ test("privacy removes connected recipient names and addresses from list, headers
     assertHidden();
     await app.open("a:1");
     assertHidden();
-    await app.key("s"); assert.ok(app.container.querySelector('[role="dialog"]'));
-    assertHidden(); await app.click(app.button("Close dialog"));
+    await app.key("s"); assert.ok(app.container.querySelector('[role="menu"]'));
+    assertHidden(); await app.key("Escape");
     assert.equal(app.container.querySelector(".message-body img"), null);
     assert.equal(app.button("Show images").disabled, false);
     await app.click(app.button("Show images"));
@@ -752,7 +756,7 @@ test("mounted cached-mail controls combine filters, retain the read-on-open read
     await app.choose("Read status", "Unread");
     await app.choose("Relevance filter", "High relevance");
     await app.choose("Sort mail", "Oldest");
-    await app.click(app.button("Search mail"));
+    await act(async () => app.container.querySelector<HTMLInputElement>('.app-search-toolbar input')!.focus());
     await app.input(app.container.querySelector<HTMLInputElement>(".search input")!, "ALPHA");
     assert.deepEqual(rows(), ["mail-a:1"]);
     await app.open("a:1");
@@ -778,7 +782,7 @@ test("mounted cached-mail controls combine filters, retain the read-on-open read
     for (const [label, value] of [["Read status", "All mail"],
       ["Relevance filter", "All relevance"], ["Sort mail", "Newest"], ["Filter by Gmail label", "All labels"]])
       assert.equal(app.button(label).textContent, value);
-    assert.equal(app.container.querySelector(".search input"), null);
+    assert.equal(app.container.querySelector<HTMLInputElement>(".search input")?.value, "");
     await app.click(app.back());
     assert.deepEqual(rows(), []);
     assert.equal(app.button("Sort mail").textContent, "Relevance");
@@ -899,9 +903,9 @@ test("sidebar toggle stays first in its header, hides the panel and survives a r
   const app = await mount();
   try {
     assert.equal(app.container.querySelector(".sidebar-head")?.firstElementChild, app.button("Hide sidebar"));
-    assert.equal(app.container.querySelector('.main-head [aria-controls="sidebar"]'), null);
+    assert.equal(app.container.querySelector('.app-toolbar [aria-controls="sidebar"]'), null);
     await app.click(app.button("Hide sidebar"));
-    assert.equal(app.container.querySelector(".main-head")?.firstElementChild, app.button("Show sidebar"));
+    assert.equal(app.container.querySelector(".app-toolbar")?.firstElementChild, app.button("Show sidebar"));
     // The panel stays mounted so it can animate closed, but leaves the focus order.
     assert.ok(app.container.querySelector(".sidebar.closed[inert]"));
     assert.equal(app.window.localStorage.getItem("sidebar"), "closed");
@@ -909,7 +913,7 @@ test("sidebar toggle stays first in its header, hides the panel and survives a r
     assert.equal(app.container.querySelector(".sidebar.closed, .sidebar[inert]"), null);
     await app.click(app.button("Settings"));
     await app.click(app.button("Hide sidebar"));
-    assert.equal(app.container.querySelector(".main-head")?.firstElementChild, app.button("Show sidebar"));
+    assert.equal(app.container.querySelector(".app-toolbar")?.firstElementChild, app.button("Show sidebar"));
   } finally { await app.close(); }
   const restarted = await mount(false, (_state, storage) => storage.setItem("sidebar", "closed"));
   try {
@@ -917,7 +921,7 @@ test("sidebar toggle stays first in its header, hides the panel and survives a r
   } finally { await restarted.close(); }
 });
 
-test("Settings replaces the mail sidebar with its sections and shows one at a time", async () => {
+test("Settings keeps mail navigation, uses a section rail and shows one section at a time", async () => {
   const app = await mount();
   try {
     const settings = app.button("Settings");
@@ -925,9 +929,12 @@ test("Settings replaces the mail sidebar with its sections and shows one at a ti
     assert.ok(footer, "Settings belongs beside Sync at the bottom of the sidebar");
     assert.ok(footer.querySelector(".sync"));
     assert.ok(settings.querySelector("svg"));
-    assert.equal(settings.textContent, "", "Settings is an accessible icon button");
+    assert.equal(settings.textContent, "", "Settings uses the requested gear-only footer");
+    assert.equal(settings.getAttribute("aria-label"), "Settings");
     await app.click(settings);
-    assert.equal(app.container.querySelector('[aria-label="Mail views"]'), null);
+    assert.ok(app.container.querySelector('[aria-label="Mail views"]'), "mail navigation remains visible");
+    assert.equal(app.container.querySelectorAll(".settings-navigation button").length, 10);
+    assert.equal(app.container.querySelector(".settings select"), null);
     assert.ok(app.container.querySelector("[data-interaction-settings]"));
     await app.click(app.button("Appearance"));
     assert.equal(app.container.querySelector("[data-interaction-settings]"), null);
@@ -965,6 +972,8 @@ test("side by side keeps the list beside the opened email; full width opens it i
 test("sender details fold away and the choice survives a restart", async () => {
   const app = await mount();
   try {
+    assert.equal(app.container.querySelector(".context"), null);
+    await app.click(app.button("Sender details"));
     assert.ok(app.container.querySelector(".context"));
     await app.click(app.button("Sender details"));
     assert.equal(app.container.querySelector(".context"), null);
@@ -1001,7 +1010,7 @@ test("desktop mail rows use a native context menu and run the chosen action", as
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(app.container.querySelector('[role="menu"]'), null, "no drawn menu on the desktop");
     assert.deepEqual(menus[0].items.map((item) => item.label),
-      ["Open", "Mark as read", "Pin email", "Reply", "Archive", "Snooze", "Move to Trash", "Teach sorting"]);
+      ["Open", "Mark as read", "Pin email", "Reply", "Reply all", "Archive", "Snooze", "Move to Trash", "Track work", "Teach sorting"]);
     assert.deepEqual(menus[0].items.filter((item) => item.separator).map((item) => item.id), ["reply", "archive", "teach"]);
     assert.ok(app.mutations.some((url) => url.endsWith(encodeURIComponent("a:1"))), "the chosen action ran");
   } finally { await app.close(); }
@@ -1029,7 +1038,7 @@ test("initial reader Back and Forward restore the latest reader without traversa
     assert.equal(app.back().disabled, false);
     await app.click(app.back());
     assert.equal(app.title(), undefined);
-    assert.equal(app.back().disabled, true);
+    assert.equal(app.back().disabled, false, "the initial Actions visit remains reachable");
     await app.click(app.forward());
     assert.equal(app.title(), "Alpha");
     await app.key("j");
@@ -1038,7 +1047,7 @@ test("initial reader Back and Forward restore the latest reader without traversa
     await app.click(app.button("Show images"));
     await app.click(app.back());
     assert.equal(app.title(), undefined);
-    assert.equal(app.back().disabled, true, "reader traversal adds no history entries");
+    assert.equal(app.back().disabled, false, "Actions remains the only earlier menu visit");
     await app.click(app.forward());
     assert.equal(app.title(), "Gamma");
     assert.ok(app.button("Show images"), "restoring a reader requires fresh image consent");
@@ -1064,10 +1073,10 @@ test("mouse side buttons leave and restore an initial reader while dialogs guard
     assert.equal(app.title(), "Alpha");
     for (const shortcut of ["c", "m", "s", "?"]) {
       await app.key(shortcut);
-      assert.ok(app.container.querySelector('[role="dialog"]'));
+      assert.ok(app.container.querySelector(shortcut === "s" ? '[role="menu"]' : '[role="dialog"]'));
       await app.mouse(3); await app.mouse(4);
       assert.equal(app.title(), "Alpha");
-      assert.ok(app.container.querySelector('[role="dialog"]'));
+      assert.ok(app.container.querySelector(shortcut === "s" ? '[role="menu"]' : '[role="dialog"]'));
       await app.key("Escape");
     }
     await app.mouse(3);
@@ -1081,16 +1090,16 @@ test("mouse side buttons leave and restore an initial reader while dialogs guard
 test("menu history restores view, account, search and Settings without restoring readers", { timeout: 10000 }, async () => {
   const app = await mount();
   try {
-    assert.ok(app.back().disabled && app.forward().disabled);
+    assert.ok(!app.back().disabled && app.forward().disabled, "Inbox follows the initial Actions visit");
     await app.open("a:1");
     await app.key("j");
     assert.equal(app.title(), "Beta");
     assert.ok(!app.back().disabled, "an opened reader can return to its list");
     await app.key("Escape");
-    assert.ok(app.back().disabled, "closing email creates no menu visit");
+    assert.ok(!app.back().disabled, "closing email preserves the earlier Actions visit");
     await app.click(app.button("Promotions"));
     await app.choose("Filter accounts", "first@example.com");
-    await app.click(app.button("Search mail"));
+    await act(async () => app.container.querySelector<HTMLInputElement>('.app-search-toolbar input')!.focus());
     const search = app.container.querySelector<HTMLInputElement>(".search input")!;
     await app.input(search, "Other"); await app.input(search, "Other message");
     await app.click(app.button("Settings"));
@@ -1109,7 +1118,7 @@ test("menu history restores view, account, search and Settings without restoring
     await app.mouse(3);
     assert.equal(app.title(), undefined);
     await app.mouse(3);
-    assert.equal(app.container.querySelector(".search input"), null, "search keystrokes form one visit");
+    assert.equal(app.container.querySelector<HTMLInputElement>(".search input")?.value, "", "search keystrokes form one visit");
     await app.mouse(4);
     assert.equal(app.container.querySelector<HTMLInputElement>(".search input")?.value, "Other message");
     await app.click(app.back());
@@ -1216,7 +1225,7 @@ test("updater Escape from Search preserves Search and the opened reader", { time
   try {
     await app.open("a:1");
     await app.key("/");
-    const search = app.container.querySelector<HTMLInputElement>("[aria-label='Search all synced mail']")!;
+    const search = app.container.querySelector<HTMLInputElement>("input[aria-describedby='mail-search-help']")!;
     assert.ok(search);
     const trigger = app.container.querySelector<HTMLButtonElement>("[aria-controls='update-details']")!;
     await app.click(trigger);
@@ -1367,9 +1376,9 @@ test("menu Back and Forward shortcuts work from focused sidebar controls", { tim
 
 
 
-test("focused closed filters accept Ctrl density shortcuts while editors and dialogs guard them", { timeout: 10000 }, async () => {
+test("text size works from filters, search and reply editors without changing density", { timeout: 10000 }, async () => {
   const app = await mount();
-  const density = () => app.container.querySelector(".list")!.classList.contains("compact");
+  const size = () => Number(app.container.querySelector<HTMLElement>(".app")!.style.getPropertyValue("--text-scale"));
   const send = async (target: HTMLElement, key: string) => {
     const event = new app.window.KeyboardEvent("keydown", { key, ctrlKey: true, bubbles: true, cancelable: true });
     await act(async () => target.dispatchEvent(event));
@@ -1378,22 +1387,17 @@ test("focused closed filters accept Ctrl density shortcuts while editors and dia
   try {
     await app.openFilters();
     const filter = app.button("Read status"); await act(async () => filter.focus());
-    assert.equal(await send(filter, "-"), true);
-    assert.equal(density(), true);
-    assert.equal(await send(filter, "+"), true);
-    assert.equal(density(), false);
-    await app.click(app.button("Search mail"));
+    assert.equal(await send(filter, "-"), true); assert.equal(size(), 0.9);
+    assert.equal(await send(filter, "+"), true); assert.equal(size(), 1);
     const search = app.container.querySelector<HTMLInputElement>(".search input")!;
-    search.focus(); assert.equal(await send(search, "-"), false); assert.equal(density(), false);
-    await app.key("Escape");
-    await app.open("a:1"); await app.key("c");
+    search.focus(); assert.equal(await send(search, "-"), true); assert.equal(size(), 0.9);
+    await app.key("Escape"); await app.open("a:1"); await app.key("c");
     const textarea = app.container.querySelector<HTMLTextAreaElement>("textarea")!;
-    assert.ok(textarea); assert.equal(await send(textarea, "-"), false); assert.equal(density(), false);
-    const dialogButton = app.container.querySelector<HTMLElement>('[role="dialog"] button')!;
-    assert.equal(await send(dialogButton, "-"), false); assert.equal(density(), false);
+    assert.equal(await send(textarea, "+"), true); assert.equal(size(), 1);
+    assert.equal(await send(textarea, "0"), true); assert.equal(size(), 1);
+    assert.equal(app.container.querySelector(".list")!.classList.contains("compact"), false);
   } finally { await app.close(); }
 });
-
 
 for (const reading of ["split", "full"] as const) test(`3000-row ${reading} App window retains tail mail, navigation, actions and passive-scroll focus`, { timeout: 15000 }, async () => {
   const app = await mount(false, (state, storage) => {
@@ -1431,14 +1435,14 @@ for (const reading of ["split", "full"] as const) test(`3000-row ${reading} App 
     await app.click(app.back());
     await app.key("j"); await app.key("Enter"); assert.equal(app.title(), "Window message 2969", "keyboard uses the full ordered data");
     await app.key("Escape");
-    await app.key("-", { ctrlKey: true }); assert.ok(list().classList.contains("compact")); await tail();
+    await app.key("d"); assert.ok(list().classList.contains("compact")); await tail();
     assert.ok(app.container.querySelector('[id="mail-window:2999"]'));
     await app.choose("Sort mail", "Oldest"); await app.key("Escape"); bounded();
     assert.ok(app.container.querySelector('[id="mail-window:2999"]'), "sort includes the tail of the original data");
     await app.choose("Filter accounts", "first@example.com"); await tail();
     assert.ok(app.container.querySelector('[id="mail-window:0"]'), "filtered sorted tail remains reachable");
     await app.choose("Filter accounts", "All accounts");
-    await app.click(app.button("Search mail"));
+    await act(async () => app.container.querySelector<HTMLInputElement>('.app-search-toolbar input')!.focus());
     await app.input(app.container.querySelector<HTMLInputElement>(".search input")!, "Window message 2999");
     assert.equal(app.container.querySelectorAll(".row").length, 1, "search considers all cached messages");
     const row = app.container.querySelector<HTMLElement>(".mail-row")!;
@@ -1511,7 +1515,7 @@ test("mounted App guards drafts/dialogs and uses one native side-button source w
     const mutations = app.mutations.length;
     for (const shortcut of ["c", "m", "s", "?"]) {
       await app.key(shortcut);
-      assert.ok(app.container.querySelector('[role="dialog"]'));
+      assert.ok(app.container.querySelector(shortcut === "s" ? '[role="menu"]' : '[role="dialog"]'));
       const body = app.container.querySelector<HTMLTextAreaElement>("textarea");
       if (shortcut === "c") {
         assert.ok(body);
@@ -1538,7 +1542,10 @@ test("mounted App guards drafts/dialogs and uses one native side-button source w
     assert.ok(app.container.querySelector(".settings"));
     await app.native("back");
     assert.equal(app.title(), undefined);
-    assert.ok(app.back().disabled);
+    assert.ok(!app.back().disabled, "Actions is still reachable from the initial Inbox visit");
+    await app.native("back");
+    assert.ok(app.container.querySelector(".work-content"));
+    assert.ok(app.back().disabled, "reader and dialog operations added no menu visits");
   } finally { await app.close(); }
 });
 
@@ -1558,4 +1565,70 @@ test("menu history clears saved readers before resolving and never marks them re
     assert.equal(app.title(), undefined);
     assert.equal(app.mutations.length, reads);
   } finally { await app.close(); }
+});
+
+test("global search leaves Settings for cached mail and Commands navigates to work views", { timeout: 10000 }, async () => {
+  const app = await mount();
+  try {
+    const search = app.container.querySelector<HTMLInputElement>('.app-search-toolbar input')!;
+    await app.click(app.button("Settings"));
+    assert.equal(app.container.querySelector('.app-search-toolbar input'), search);
+    await app.input(search, 'subject:Alpha');
+    assert.equal(app.container.querySelector('.settings'), null);
+    assert.equal(app.container.querySelector('.pane-title')?.textContent, 'All cached');
+    assert.deepEqual([...app.container.querySelectorAll('.row')].map(row => row.id), ['mail-a:1']);
+    assert.equal(app.mutations.length, 0, 'search does not mark mail read');
+    await app.click(app.container.querySelector<HTMLButtonElement>('.commands-button')!);
+    const commandSearch = app.container.querySelector<HTMLInputElement>('[aria-label="Search commands"]')!;
+    await app.input(commandSearch, 'Open Projects');
+    await act(async () => commandSearch.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    assert.equal(app.container.querySelector('[role="dialog"]'), null);
+    assert.equal(app.container.querySelector('.pane-title')?.textContent, 'Projects');
+    assert.equal(app.container.querySelector('.app-search-toolbar input'), search);
+    await app.click(app.button('Settings'));
+    await app.click(app.button('Inbox'));
+    assert.equal(app.container.querySelector('.settings'), null, 'persistent mail navigation leaves Settings');
+    assert.equal(app.container.querySelector('.pane-title')?.textContent, 'Inbox');
+  } finally { await app.close(); }
+});
+
+test('V2 compact toolbar, text size, page keys and drafts navigation', async () => {
+  const ui = await mount();
+  try {
+    assert.ok(ui.back().closest('.app-toolbar'), 'history belongs in the persistent toolbar');
+    assert.equal(ui.container.querySelector('[aria-label="Sender context"]'), null);
+    await ui.click(ui.container.querySelector<HTMLElement>("[id='mail-a:1']")!);
+    assert.equal(ui.container.querySelector('[aria-label="Selected email actions"]'), null);
+    await ui.key('PageDown');
+    assert.equal(ui.container.querySelector('.row.selected')?.id, 'mail-a:2');
+    await ui.open('a:1');
+    await ui.key('PageDown'); assert.equal(ui.title(), 'Beta');
+    await ui.key('PageUp'); assert.equal(ui.title(), 'Alpha');
+    await ui.key('+', {ctrlKey:true});
+    assert.equal(ui.container.querySelector<HTMLElement>('.app')?.style.getPropertyValue('--text-scale'), '1.1');
+    await ui.key('-', {ctrlKey:true});
+    assert.equal(ui.container.querySelector<HTMLElement>('.app')?.style.getPropertyValue('--text-scale'), '1');
+    await ui.click(ui.button('Drafts'));
+    assert.equal(ui.container.querySelector('.pane-title')?.textContent, 'Drafts');
+    assert.equal(ui.container.querySelector('[role="dialog"]'), null);
+  } finally { await ui.close(); }
+});
+
+test('assistant management stays in Settings and Agent review only shows review work', async () => {
+  const ui = await mount();
+  try {
+    await ui.click(ui.button('Settings')); await ui.click(ui.button('AI and agents'));
+    assert.equal(ui.container.querySelector('.pane-title')?.textContent, 'Settings');
+    assert.ok(ui.container.querySelector('.settings .agent-assistants'));
+    assert.equal(ui.container.querySelector('.settings .agent-proposals'), null);
+    await ui.click(ui.button('Agent review'));
+    assert.equal(ui.container.querySelector('.pane-title')?.textContent, 'Agent review');
+    assert.ok(ui.container.querySelector('.agent-proposals'));
+    assert.equal(ui.container.querySelector('.agent-assistants'), null);
+    await ui.click(ui.button('Manage assistants'));
+    assert.equal(ui.container.querySelector('.pane-title')?.textContent, 'Settings');
+    assert.ok(ui.container.querySelector('.settings .agent-assistants'));
+    await ui.click(ui.back()); assert.equal(ui.container.querySelector('.pane-title')?.textContent, 'Agent review');
+    await ui.click(ui.forward()); assert.equal(ui.container.querySelector('.pane-title')?.textContent, 'Settings');
+  } finally { await ui.close(); }
 });

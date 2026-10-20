@@ -14,7 +14,8 @@ export function ShortcutsDialog({ shortcut, onClose }: {
           ["0–9", "Filter by account"],
           ["↑ / ↓", "Select previous / next email in the list"],
           [window.desktop?.platform === "darwin" ? "Cmd+K" : "Ctrl+K", "Commands"],
-          ["Ctrl + / Ctrl −", "Less / more compact"],
+          ["Ctrl/Cmd + / − / 0", "Larger / smaller / reset text"],
+          ["Page Up / Page Down", "Previous / next email"],
           ...(window.desktop?.platform === "darwin" ? [["Cmd+[ / Cmd+]", "Back / Forward"]] : []),
         ].map(([key, text]) => (
           <div key={key}>

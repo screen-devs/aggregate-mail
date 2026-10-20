@@ -3,9 +3,8 @@ import type { Account } from "../../shared/types";
 import { accountLabel } from "../mail-ui";
 import { ProviderIcon } from "../mail/Avatar";
 import { relative, sidebarViews, viewNames, type View } from "../mail/format";
-import { settingsSections, type SettingsSection } from "../settings/sections";
 import { SlidingNav } from "../ui/SlidingNav";
-import { ChevronDown, Compose as ComposeIcon, Mail as MailIcon, Plus, Search, Settings, SidebarIcon } from "../ui/icons";
+import { ChevronDown, Compose as ComposeIcon, Mail as MailIcon, Plus, Settings, SidebarIcon } from "../ui/icons";
 import { captionDoubleClick, type Corner } from "./PaneHeader";
 import { TrafficLights } from "../ui/TrafficLights";
 
@@ -34,8 +33,7 @@ function Heading({ id, folded, onFold, children }: {
 }
 
 /**
- * The full-height source list. In mail it holds the app actions, the mail
- * views and the account filter; in Settings it lists the sections.
+ * Persistent mail navigation, account filters and bottom Settings action.
  */
 export function Sidebar({
   open, corner, maximized, onToggle, settings, mail, sections,
@@ -50,6 +48,7 @@ export function Sidebar({
     onView: (view: View) => void;
     inboxCount: number;
     snoozedCount: number;
+    dueCount?: number;
     accounts: Account[];
     accountFilter: string;
     onAccount: (id: string) => void;
@@ -59,16 +58,14 @@ export function Sidebar({
     onAddAccount: () => void;
     onCompose: () => void;
     onDrafts: () => void;
+    draftCount?: number;
     onSettings: () => void;
-    onCommands?: () => void;
     shortcut: (action: "compose" | "settings") => string;
     syncing: boolean;
     lastSync: number | null;
     onSync: () => void;
   };
   sections: {
-    current: SettingsSection;
-    onSection: (section: SettingsSection) => void;
     onClose: () => void;
   };
 }) {
@@ -83,7 +80,7 @@ export function Sidebar({
     <aside
       id="sidebar"
       className={open ? "sidebar" : "sidebar closed"}
-      aria-label={settings ? "Settings sections" : "Mailboxes"}
+      aria-label="Mailboxes"
       inert={!open}
     >
       <div className={corner === "reserve" ? "sidebar-head reserve-lights" : "sidebar-head"} onDoubleClick={captionDoubleClick}>
@@ -98,66 +95,39 @@ export function Sidebar({
         </button>
         {corner === "left" && <TrafficLights maximized={maximized} />}
       </div>
-      {settings ? (
-        <div className="sidebar-content" key="settings">
-          <SlidingNav activeKey={null} label="App" className="sidebar-group sidebar-primary">
-            <button aria-label="Close settings" aria-pressed={true} title="Back to mail (Esc)"
-              onClick={sections.onClose}>
-              <MailIcon color="currentColor" size={16} />
-              Mail
-            </button>
-          </SlidingNav>
-          <SlidingNav activeKey={sections.current} label="Settings sections" className="sidebar-group">
-            <h2>Settings</h2>
-            {settingsSections.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                className={sections.current === id ? "active" : undefined}
-                aria-current={sections.current === id ? "page" : undefined}
-                onClick={() => sections.onSection(id)}
-              >
-                <Icon color="currentColor" size={16} />
-                {label}
-              </button>
-            ))}
-          </SlidingNav>
-        </div>
-      ) : (
         <div className="sidebar-content" key="mail">
+          <div className="sidebar-brand">Emc² <span>V2</span></div>
           <SlidingNav activeKey={null} label="App" className="sidebar-group sidebar-primary">
             <button title={`Compose (${mail.shortcut("compose")})`} onClick={mail.onCompose}>
               <ComposeIcon color="currentColor" size={16} />
               New message
             </button>
-            <button disabled={mail.blocked || mail.busy || !mail.accounts.length} onClick={mail.onDrafts}>
+            <button className={!settings && mail.view === "drafts" ? "active" : undefined} aria-current={!settings && mail.view === "drafts" ? "page" : undefined} aria-label={mail.draftCount === undefined ? "Drafts" : `Drafts, ${mail.draftCount} saved`} disabled={mail.blocked || mail.busy || !mail.accounts.length} onClick={mail.onDrafts}>
               <MailIcon color="currentColor" size={16} />
               Drafts
+              {mail.draftCount !== undefined && <span className="sidebar-count">{mail.draftCount}</span>}
             </button>
           </SlidingNav>
-          {mail.onCommands && <div className="sidebar-group sidebar-primary">
-            <button aria-label="Commands" title="Commands (Cmd/Ctrl+K)" disabled={mail.blocked} onClick={mail.onCommands}>
-              <Search color="currentColor" size={16} />Commands
-            </button>
-          </div>}
-          <SlidingNav activeKey={mail.view} label="Mail views" className="sidebar-group">
-            <Heading id="mail" folded={folded.has("mail")} onFold={fold}>Mail</Heading>
-            {!folded.has("mail") && sidebarViews.map(({ view, Icon }) => {
-              const total = view === "snoozed" ? mail.snoozedCount : view === "archive" ? null : mail.inboxCount;
+          {(["workspace", "mail"] as const).map((group) => <SlidingNav key={group} activeKey={settings ? null : mail.view} label={group === "workspace" ? "Workspace views" : "Mail views"} className="sidebar-group">
+            <Heading id={group} folded={folded.has(group)} onFold={fold}>{group === "workspace" ? "Workspace" : "Mail"}</Heading>
+            {!folded.has(group) && sidebarViews.filter(({ view }) => ["actions", "calendar", "projects", "agents"].includes(view) === (group === "workspace")).map(({ view, Icon }) => {
+              const total = view === "actions" ? mail.dueCount ?? null : view === "snoozed" ? mail.snoozedCount : view === "inbox" ? mail.inboxCount : null;
               if (view === "snoozed" && !total && mail.view !== "snoozed") return null;
               return (
                 <button
                   key={view}
-                  className={mail.view === view ? "active" : undefined}
-                  aria-current={mail.view === view ? "page" : undefined}
+                  aria-label={view === "actions" ? mail.dueCount === undefined ? "Today, due follow-ups unavailable" : `Today, ${mail.dueCount} due follow-ups` : undefined}
+                  className={!settings && mail.view === view ? "active" : undefined}
+                  aria-current={!settings && mail.view === view ? "page" : undefined}
                   onClick={() => mail.onView(view)}
                 >
                   <Icon color="currentColor" size={16} />
                   {viewNames[view]}
-                  {total !== null && <span className="sidebar-count">{total}</span>}
+                  {view === "actions" && mail.dueCount === undefined ? <span className="sidebar-count" aria-hidden="true">?</span> : total !== null && <span className="sidebar-count">{total}</span>}
                 </button>
               );
             })}
-          </SlidingNav>
+          </SlidingNav>)}
           <SlidingNav activeKey={mail.accountFilter} label="Filter accounts" className="sidebar-group">
             <Heading id="accounts" folded={folded.has("accounts")} onFold={fold}>Accounts</Heading>
             {!folded.has("accounts") && mail.accounts.length > 0 && (
@@ -197,6 +167,7 @@ export function Sidebar({
               </button>
             )}
           </SlidingNav>
+        </div>
           <div className="sidebar-footer">
             <button
               className="sync"
@@ -210,13 +181,11 @@ export function Sidebar({
                   ? `Synced ${relative(mail.lastSync)}`
                   : "Not synced"}
             </button>
-            <button className="icon" aria-label="Settings" title={`Settings (${mail.shortcut("settings")})`}
-              onClick={mail.onSettings}>
+            <button className="sidebar-settings" aria-label={settings ? "Close settings" : "Settings"} aria-current={settings ? "page" : undefined} title={`Settings (${mail.shortcut("settings")})`}
+              onClick={settings ? sections.onClose : mail.onSettings}>
               <Settings color="currentColor" size={16} />
             </button>
           </div>
-        </div>
-      )}
     </aside>
   );
 }

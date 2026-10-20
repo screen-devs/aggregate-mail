@@ -98,7 +98,7 @@ test("encrypted drafts: authenticated lifecycle, stale writes, sync and update g
       assert.equal(missingAccount.status, 404);
     });
 
-    await t.test("incomplete reply fields round-trip; lists omit bodies and metadata; no provider calls", async () => {
+    await t.test("incomplete reply fields round-trip; lists expose only bounded summaries; no provider calls", async () => {
       const draft = await create();
       assert.equal(draft.revision, 1);
       assert.equal(draft.accountId, "a");
@@ -111,11 +111,20 @@ test("encrypted drafts: authenticated lifecycle, stale writes, sync and update g
       assert.deepEqual(await read.json(), draft);
       const list = await (await request()).json() as DraftSummary[];
       assert.equal(list.length, 1);
-      assert.deepEqual(Object.keys(list[0]).sort(), ["id", "accountId", "revision", "updatedAt", "to", "subject", "sendUnknown"].sort());
+      assert.deepEqual(Object.keys(list[0]).sort(), ["id", "accountId", "revision", "updatedAt", "to", "subject", "sendUnknown", "preview", "attachmentCount"].sort());
+      assert.equal(list[0].preview, content.body.replace(/\s+/g, " "));
+      assert.equal(list[0].attachmentCount, 0);
+      const detailed = await create({ ...content, cc: ["copy@example.test"], body: "Long body ".repeat(100),
+        attachments: [{ filename: "note.txt", contentType: "text/plain", content: Buffer.from("synthetic attachment").toString("base64") }] });
+      const summary = (await (await request()).json() as DraftSummary[]).find(item => item.id === detailed.id)!;
+      assert.equal(summary.preview?.length, 200);
+      assert.deepEqual(summary.cc, ["copy@example.test"]);
+      assert.equal(summary.attachmentCount, 1);
+      for (const field of ["body", "attachments", "inReplyTo", "references", "threadId"]) assert.equal(field in summary, false);
       const empty = await create({ to: "", subject: "", body: "" });
       assert.equal(empty.body, "");
       assertEncrypted(directory, true);
-      for (const saved of [draft, empty]) assert.equal((await request(`/${saved.id}`, "DELETE", { revision: saved.revision })).status, 200);
+      for (const saved of [draft, empty, detailed]) assert.equal((await request(`/${saved.id}`, "DELETE", { revision: saved.revision })).status, 200);
     });
 
     await t.test("same-revision saves have one winner; stale save/delete cannot replace acknowledged data", async () => {

@@ -24,6 +24,7 @@ test("service Gmail polls persist arrivals, emit changes, and stop for updater d
   const a = { ...account("a"), hasSynced: true };
   store.put("account", a.id, a);
   let revision = "1", polls = 0, changes = 0;
+  let arrivalReady: (() => void) | undefined;
   const lists: string[] = [], notifications: number[] = [];
   t.mock.method(google, "gmail", () => ({ users: { labels: { list: async () => ({ data: { labels: [] } }) } } }), {});
   t.mock.method(providers.gmail, "list", async (account: StoredAccount) => {
@@ -34,16 +35,23 @@ test("service Gmail polls persist arrivals, emit changes, and stop for updater d
       unread: true, category: "important", relevance: 2, reason: "", archived: false, snoozedUntil: null }];
   });
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const server = await backend.startServer(0, undefined, () => changes++, (count) => notifications.push(count),
+  const server = await backend.startServer(0, undefined, () => changes++, (count) => { notifications.push(count); arrivalReady?.(); },
     undefined, async () => { polls++; return revision; });
+  const tickArrival = async () => {
+    const arrived = new Promise<void>(resolve => { arrivalReady = resolve; });
+    t.mock.timers.tick(gmailPollInterval);
+    await arrived;
+    arrivalReady = undefined;
+    await flush();
+  };
   try {
-    t.mock.timers.tick(gmailPollInterval); await flush();
+    await tickArrival();
     assert.deepEqual(lists, ["a"]);
     assert.ok(store.all("mail").some((mail) => mail.id === "a:1"));
     assert.deepEqual(notifications, [1]); assert.ok(changes > 0);
     t.mock.timers.tick(gmailPollInterval); await flush(); assert.equal(lists.length, 1);
     revision = "2";
-    t.mock.timers.tick(gmailPollInterval); await flush();
+    await tickArrival();
     assert.equal(lists.length, 2);
     assert.ok(store.all("mail").some((mail) => mail.id === "a:2"));
     assert.deepEqual(notifications, [1, 1]);

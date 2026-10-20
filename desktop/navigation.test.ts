@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isExternalLink, isLocalNavigation } from "./navigation.js";
+import { isExternalLink, isLocalNavigation, swipeNavigation } from "./navigation.js";
 const origin = "http://127.0.0.1:32145";
+test("native horizontal swipes use history; vertical gestures retain scrolling", () => {
+  assert.equal(swipeNavigation("right"), "back");
+  assert.equal(swipeNavigation("left"), "forward");
+  for (const direction of ["up", "down", "", "unknown"]) assert.equal(swipeNavigation(direction), undefined);
+});
 test("desktop only navigates its own UI and hands safe links to the browser", () => {
   assert.ok(isLocalNavigation(`${origin}/?connected=1`, origin));
   assert.ok(!isLocalNavigation(`${origin}/api/state`, origin));

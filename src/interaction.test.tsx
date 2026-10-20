@@ -121,10 +121,9 @@ test("mounted settings captures without app dispatch, rejects conflicts, changes
     assert.equal(changes, 1);
     assert.equal((await press("Tab")).defaultPrevented, false);
     assert.equal((await press("Escape")).defaultPrevented, false); assert.equal(escapes, 1);
-    const select = dom.window.document.querySelector("select")!;
-    await act(async () => { select.value = "single"; select.dispatchEvent(new dom.window.Event("change", { bubbles: true })); });
+    await act(async () => [...dom.window.document.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(button => button.textContent === "Single click")!.click());
     assert.equal(current.opening, "single");
-    await act(async () => dom.window.document.querySelector<HTMLButtonElement>("button")!.click());
+    await act(async () => [...dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Reset interaction defaults")!.click());
     assert.deepEqual(current, defaults); assert.equal(field.value, "J"); assert.equal(dom.window.document.activeElement, field);
   } finally {
     await act(async () => root.unmount()); dom.window.close();

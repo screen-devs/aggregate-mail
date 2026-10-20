@@ -23,7 +23,8 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
     unread: false, category: "important", relevance: 3, reason: "Team", archived: false, snoozedUntil: null,
     messageId: "<parent@example.test>", threadId: "thread-a", references: ["<reference@example.test>"] };
   store.put("mail", mail.id, mail);
-  const server = await backend.startServer(0, undefined, undefined, undefined, quietImapWatch);
+  let mailChanged: (() => void) | undefined;
+  const server = await backend.startServer(0, undefined, () => mailChanged?.(), undefined, quietImapWatch);
   const address = server.address(); assert.ok(address && typeof address === "object");
   const origin = `http://127.0.0.1:${address.port}`;
   const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/" });
@@ -37,7 +38,7 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
   (dom.window as unknown as Window).desktop = {
     platform: "darwin", materials: false, oauthUrl: "", windowCommand() {}, onWindowState: () => () => {},
-    onAccountConnected: () => () => {}, onMailChanged: () => () => {}, onNavigation: () => () => {},
+    onAccountConnected: () => () => {}, onMailChanged: (callback) => { mailChanged = callback; return () => { mailChanged = undefined; }; }, onNavigation: () => () => {},
   };
   const originalFetch = globalThis.fetch;
   let approve = false, sends = 0, failPut = false, dropCreate = false, creates = 0;
@@ -83,10 +84,11 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
     assert.equal(condition(), true, "Mounted draft state did not settle");
   };
   const button = (text: string) => {
-    const control = [...container.querySelectorAll<HTMLButtonElement>("button")].find((element) => element.textContent?.trim() === text);
+    const control = [...container.querySelectorAll<HTMLButtonElement>("button")].find((element) => text === "Drafts" ? element.getAttribute("aria-label")?.startsWith("Drafts") : element.textContent?.trim() === text);
     assert.ok(control, `Missing button: ${text}`);
     return control;
   };
+  const draftCount = () => Number(button("Drafts").querySelector(".sidebar-count")?.textContent);
   const click = async (control: HTMLElement) => { await act(async () => { control.click(); }); };
   const fill = async (selector: string, value: string) => {
     const field = container.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(selector); assert.ok(field);
@@ -107,18 +109,21 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
   const remount = async () => {
     await act(async () => root.unmount()); root = createRoot(container);
     await act(async () => root.render(<App />));
+    await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
     await settle(() => !!container.querySelector(".row"));
   };
   const recover = async () => {
     await click(button("Drafts"));
-    await settle(() => !!container.querySelector(".saved-drafts button"));
-    await click(container.querySelector<HTMLElement>(".saved-drafts button")!);
+    await settle(() => !!container.querySelector(".draft-row"));
+    await click(container.querySelector<HTMLElement>(".draft-row")!);
     await settle(() => !!container.querySelector(".compose-form"));
   };
   try {
     await act(async () => root.render(<App />));
+    await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
     await settle(() => !!container.querySelector(".row"));
     const drafts = button("Drafts");
+    assert.equal(draftCount(), 0, "Empty saved drafts display zero");
     assert.equal(drafts.closest("aside")?.id, "sidebar");
     assert.equal(button("New message").nextElementSibling, drafts);
     assert.equal(container.querySelector(".pane-tools button")?.textContent === "Drafts", false);
@@ -128,11 +133,13 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
     await fill(".compose-form textarea", "SYNTHETIC-DRAFT-BODY latest edit");
     assert.equal(unloadBlocked(), true, "Unacknowledged edits block close");
     assert.equal(store.all("draft").length, 0, "No save is claimed before commit");
+    assert.equal(draftCount(), 0, "Pending edits do not inflate the saved count");
     assert.match(container.textContent!, /Saving draft/);
     pauseSave = false; releaseSave();
     await settle(() => store.all("draft")[0]?.body === "SYNTHETIC-DRAFT-BODY latest edit" && /Draft saved/.test(container.textContent!));
     assert.equal(unloadBlocked(), false);
     assert.equal(store.all("draft").length, 1, "Rapid edits coalesce into one record");
+    await settle(() => draftCount() === 1);
     for (const suffix of ["", "-wal"]) {
       const filename = path.join(directory, `mail.sqlite${suffix}`);
       if (existsSync(filename)) assert.equal(readFileSync(filename).includes(Buffer.from("SYNTHETIC-DRAFT-BODY")), false);
@@ -141,6 +148,7 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
 
     await remount();
     assert.equal(sends, 0);
+    assert.equal(draftCount(), 1, "Saved count survives restarting the renderer");
     await recover();
     assert.equal(container.querySelector<HTMLTextAreaElement>("textarea")!.value, "SYNTHETIC-DRAFT-BODY latest edit");
     assert.equal(container.querySelector<HTMLInputElement>('input[type="email"]')!.value, "unfinished-recipient");
@@ -173,8 +181,10 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
     approve = true; sendMode = "accept"; await submit();
     await settle(() => !container.querySelector(".compose-form"));
     assert.equal(sends, 2); assert.equal(store.all("draft").length, 0); assert.equal(deletes, 1);
+    await settle(() => draftCount() === 0);
     assert.match(container.textContent!, /Do not resend/);
 
+    await click([...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find(button => button.textContent?.trim().startsWith("Inbox"))!);
     await click(container.querySelector<HTMLElement>(".row")!);
     await settle(() => container.querySelector<HTMLButtonElement>('button[aria-label="Reply"]')?.disabled === false);
     await click(container.querySelector<HTMLElement>('button[aria-label="Reply"]')!);
@@ -189,15 +199,16 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
     dom.window.localStorage.setItem("privacy", "on");
     await remount();
     await click(button("Drafts"));
-    await settle(() => !!container.querySelector(".saved-drafts button"));
+    await settle(() => !!container.querySelector(".draft-row"));
     const picker = container.querySelector('[aria-label="Saved drafts"]')!;
     assert.doesNotMatch(picker.outerHTML, /Synthetic reply thread|reply@example.test|SYNTHETIC reply content/);
-    await click(container.querySelector<HTMLElement>(".saved-drafts button")!);
+    await click(container.querySelector<HTMLElement>(".draft-row")!);
     await settle(() => !!container.querySelector(".compose-form"));
     approve = false; await click(button("Discard draft")); assert.equal(store.all("draft").length, 1);
     approve = true; await click(button("Discard draft"));
     await settle(() => !container.querySelector(".compose-form"));
     assert.equal(store.all("draft").length, 0); assert.equal(sends, 2);
+    await settle(() => draftCount() === 0);
 
     store.put("compose", "preferences", {
       templates: [{ id: "synthetic-template", name: "Synthetic template", subject: "Template subject", body: "SYNTHETIC template body" }],
@@ -219,6 +230,7 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
     approve = true; await fill(".compose-form select", "b");
     await settle(() => store.all("draft").length === 2 && /Draft saved/.test(container.textContent!));
     assert.deepEqual(store.all("draft").map((draft) => draft.accountId).sort(), ["a", "b"]);
+    await settle(() => draftCount() === 2);
     assert.equal(store.all("draft").find((draft) => draft.accountId === "a")!.body, `${templateBody}\n\n-- \nSignature A`);
     assert.equal(store.all("draft").find((draft) => draft.accountId === "b")!.body, `${templateBody}\n\n-- \nSignature B`);
     assert.equal(sends, 2);
@@ -232,6 +244,7 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
     await settle(() => /Draft save could not be confirmed/.test(container.textContent!));
     const createsAfterLoss = creates;
     assert.equal(store.all("draft").length, 3, "The original committed despite the lost acknowledgement");
+    await settle(() => draftCount() === 3);
     const possibleOriginal = store.all("draft").find((draft) => !previousDrafts.has(draft.id))!;
     assert.ok(possibleOriginal);
     assert.equal(unloadBlocked(), true);
@@ -251,12 +264,13 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
   } finally {
     releaseSave();
     await act(async () => root.unmount());
+    // Finish pending HTTP reloads before removing React's DOM globals.
+    await act(async () => { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); });
     globalThis.fetch = originalFetch;
     dom.window.close();
     for (const [key, descriptor] of prior) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key);
     }
-    await new Promise<void>((resolve) => server.close(() => resolve()));
     store.closeStore(); rmSync(directory, { recursive: true, force: true });
     for (const [key, value] of oldEnv) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   }

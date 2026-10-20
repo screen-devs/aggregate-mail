@@ -4,7 +4,7 @@ import type { SettingsSection } from "./settings/sections";
 
 export type MailLocation = {
   page: "mail" | "settings";
-  view: "inbox" | "snoozed" | "archive";
+  view: "actions" | "calendar" | "projects" | "agents" | "inbox" | "snoozed" | "archive" | "sent" | "all" | "drafts";
   tab: InboxTab;
   settingsSection: SettingsSection;
   accountFilter: string;
@@ -19,7 +19,7 @@ export type MailLocation = {
 
 export function useMailNavigation() {
   const [location, update] = useState<MailLocation>({
-    page: "mail", view: "inbox", tab: "primary", settingsSection: "interaction", accountFilter: "all", labelFilter: "all", query: "", readFilter: "all", relevanceFilter: "all", sort: "newest", selectedId: null, opened: false,
+    page: "mail", view: "actions", tab: "primary", settingsSection: "interaction", accountFilter: "all", labelFilter: "all", query: "", readFilter: "all", relevanceFilter: "all", sort: "newest", selectedId: null, opened: false,
   });
   // Menu history stays in memory. Reader selection is not a visit.
   const history = useRef({ entries: [location], index: 0, editingSearch: false, reader: null as MailLocation | null });

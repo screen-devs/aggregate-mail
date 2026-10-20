@@ -48,7 +48,7 @@
   margin-bottom: 18px;
 }
 .dialog-title h2 {
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale, 1));
   font-weight: 600;
 }
 .dialog-copy {
@@ -61,75 +61,93 @@
   color: var(--text);
   font-weight: 500;
 }
+.dialog:has(.compose-form) {
+  width: 680px;
+}
 .compose-form {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
-.compose-original {
-  max-height: 150px;
-  margin: 8px 0 6px;
-  padding: 10px 12px;
-  overflow: auto;
-  border-left: 2px solid var(--line-2);
-  color: var(--text-3);
-  font-size: 12px;
-  overflow-wrap: anywhere;
+.compose-envelope {
+  border-block: 1px solid var(--line);
 }
-.compose-original-heading { display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.compose-original-heading span, .compose-original-subject { color: var(--text-3); }
-.compose-original-subject { margin: 3px 0 6px; }
-.compose-original .formatted-mail { max-height: none; }
-.compose-original .formatted-mail :is(p, h1, h2, h3, h4, h5, h6) { margin-block: 4px; }
 .compose-form label {
   display: flex;
   align-items: center;
   gap: 14px;
   min-width: 0;
   border-bottom: 1px solid var(--line);
-  font-size: 12.5px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-3);
-  transition: border-color 160ms var(--ease-out);
 }
-.compose-form label:focus-within {
-  border-bottom-color: var(--text-3);
-}
+.compose-envelope label > span { width: 48px; flex-shrink: 0; }
+.compose-envelope > label:last-child { border-bottom: 0; }
+.compose-form label:focus-within { border-bottom-color: var(--accent); }
 .compose-form :is(input, select) {
   flex: 1;
+  width: 100%;
+  min-width: 0;
   border: 0;
   border-radius: 0;
-  padding: 14px 0;
+  padding: 12px 0;
   color: var(--text);
 }
 .compose-form :is(input, select):focus-visible {
-  outline: none;
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
+.compose-to-row { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.compose-to-row label { flex: 1; border-bottom: 0; }
+.compose-cc-toggle { padding: 8px; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); }
+.compose-subject input { font-weight: 600; }
 .compose-form textarea {
   min-height: 280px;
-  margin: 6px 0 14px;
+  margin: 14px 0;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   resize: vertical;
-  font-size: 14px;
+  font-size: calc(14px * var(--text-scale, 1));
   line-height: 1.65;
 }
 .compose-form textarea:focus-visible {
-  outline: none;
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
 }
+.compose-extras { display: flex; flex-direction: column; gap: 8px; padding-bottom: 14px; }
+.compose-form .compose-attachments { border: 0; flex-wrap: wrap; gap: 8px 14px; }
+.compose-attachments > span { color: var(--text-2); }
+.compose-attachments input { width: auto; padding: 0; font-size: calc(12px * var(--text-scale, 1)); }
+.compose-attachment-limits, .compose-format { font-size: calc(11px * var(--text-scale, 1)); line-height: 1.5; color: var(--text-3); }
+.compose-attachment { display: flex; align-items: center; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }
+.compose-attachment button { flex-shrink: 0; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); }
+.compose-footer {
+  position: sticky;
+  bottom: -28px;
+  margin-top: auto;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+.compose-save-status { color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); line-height: 1.5; overflow-wrap: anywhere; }
+.compose-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 10px 0; }
+.compose-actions > button:not(.compose-send) { color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); min-height: 32px; }
+.compose-send { margin-left: auto; min-width: 82px; justify-content: center; }
 .option {
   width: 100%;
   justify-content: space-between;
   gap: 16px;
   padding: 14px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   transition: color 140ms var(--ease-out);
 }
 .option:hover {
   color: var(--text);
 }
 .option span {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-4);
 }
 .shortcut-list > div {
@@ -142,3 +160,19 @@
 .shortcut-list kbd {
   color: var(--text);
 }
+
+.quick-choice-dialog { width: 340px; padding: 16px; }
+.quick-choice-dialog .dialog-title { margin-bottom: 8px; }
+.quick-choice-dialog .dialog-copy { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 42px; padding: 10px 8px; border-radius: var(--radius-control); text-align: left; }
+.quick-choice:hover:not(:disabled) { background: var(--selected); }
+.quick-choice > span { color: var(--text-3); font-size: calc(11px * var(--text-scale, 1)); white-space: nowrap; }
+
+.dialog:has(.compose-with-context), .dialog.compose-with-context { width: 1100px; }
+.compose-reply-layout { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 24px; }
+.compose-context { display: flex; flex-direction: column; min-width: 0; max-height: 70dvh; padding-right: 20px; border-right: 1px solid var(--line); }
+.compose-context-label, .compose-context > p { color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); }
+.compose-context h3 { font-size: calc(15px * var(--text-scale, 1)); margin: 8px 0; overflow-wrap: anywhere; }
+.compose-context-body { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; padding-top: 16px; }
+.compose-form.dragging-files { outline: 2px dashed var(--accent); outline-offset: 6px; background: var(--selected); }
+@media (max-width: 800px) { .compose-reply-layout { grid-template-columns: 1fr; } .compose-context { max-height: 25dvh; border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 12px; } }

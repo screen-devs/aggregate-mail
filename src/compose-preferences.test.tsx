@@ -167,8 +167,7 @@ test("mounted private settings reveal only the focused editor and enforce the te
     await render(<PrivacyContext.Provider value={{ on: true, revealed: new Set(), toggle() {} }}>
       <ComposeSettings accounts={accounts} value={value} onSave={async () => {}} />
     </PrivacyContext.Provider>);
-    const select = document.querySelector("select")!;
-    await act(async () => { select.value = "template-0"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(button => button.textContent === "Template 1")!.click());
     const name = document.querySelector<HTMLInputElement>("input")!;
     assert.equal(name.value, "");
     assert.ok(!document.body.innerHTML.includes("Synthetic greeting"));
