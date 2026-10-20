@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { GmailLabel, Mail } from "../shared/types";
 import { LabelForm } from "./dialogs/LabelForm";
 import { PrivacyContext } from "./ui/Privacy";
-import { accountLabel, customLabels, densityShortcut, filterMail, markMailRead, matchesLabel, selectedMail } from "./mail-ui";
+import { accountLabel, customLabels, textSizeShortcut, filterMail, markMailRead, matchesLabel, selectedMail } from "./mail-ui";
 
 test("account labels keep custom names visible while redacting literal and encoded addresses", () => {
   const account = { id: "a", provider: "imap" as const, email: "first@example.com" };
@@ -32,16 +32,16 @@ const labels: GmailLabel[] = [
   { id: "UNREAD", accountId: "a", name: "Unread", type: "system" },
 ];
 
-test("density shortcuts recognize main keyboard and numpad without hijacking other modifiers", () => {
+test("text size shortcuts recognize main keyboard and numpad without hijacking other modifiers", () => {
   const event = { key: "", code: "", ctrlKey: true, altKey: false, metaKey: false };
-  for (const key of ["+", "=", "Add"]) assert.equal(densityShortcut({ ...event, key }), "comfortable");
-  for (const key of ["-", "Subtract"]) assert.equal(densityShortcut({ ...event, key }), "compact");
-  assert.equal(densityShortcut({ ...event, code: "NumpadAdd" }), "comfortable");
-  assert.equal(densityShortcut({ ...event, code: "NumpadSubtract" }), "compact");
-  assert.equal(densityShortcut({ ...event, key: "+", ctrlKey: false }), null);
-  assert.equal(densityShortcut({ ...event, key: "+", altKey: true }), null);
-  assert.equal(densityShortcut({ ...event, key: "+", metaKey: true }), null);
-  assert.equal(densityShortcut({ ...event, key: "d" }), null);
+  for (const key of ["+", "=", "Add"]) assert.equal(textSizeShortcut({ ...event, key }), 1);
+  for (const key of ["-", "Subtract"]) assert.equal(textSizeShortcut({ ...event, key }), -1);
+  assert.equal(textSizeShortcut({ ...event, code: "NumpadAdd" }), 1);
+  assert.equal(textSizeShortcut({ ...event, code: "NumpadSubtract" }), -1);
+  assert.equal(textSizeShortcut({ ...event, key: "+", ctrlKey: false }), null);
+  assert.equal(textSizeShortcut({ ...event, key: "+", altKey: true }), null);
+  assert.equal(textSizeShortcut({ ...event, key: "+", metaKey: true }), null);
+  assert.equal(textSizeShortcut({ ...event, key: "d" }), null);
 });
 
 test("Gmail label filters and editors stay account-scoped, escape names and preserve address privacy", () => {

@@ -1,3 +1,4 @@
+import { notificationMail, type MailArrival, type NotificationMail } from "../shared/notifications.js";
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { EventEmitter } from "node:events";
@@ -8,7 +9,10 @@ import path from "node:path";
 import express from "express";
 import { google } from "googleapis";
 import { z } from "zod";
-import { all, put, putBatch, remove, account, transaction, type StoredAccount } from "./store.js";
+import { all, get, readMail, mailChanges, count, put, putBatch, remove, removeAccountAttachments, account, transaction, type StoredAccount } from "./store.js";
+import { matchesRule } from "../shared/rules.js";
+import { mountWorkspace } from "./workspace.js";
+import { mountAgentProvider } from "./agent-provider.js";
 import { mountDrafts } from "./drafts.js";
 import { oauth, providers, presets, validateImap, listGmailLabels, syncError } from "./providers.js";
 import { ImapWatch, sameImapAccount, type ImapWatchFactory } from "./imap-watch.js";
@@ -29,7 +33,7 @@ import { mountMcp, authorizeMcp } from "./mcp.js";
 import { classify, sortMail, SortingUnavailable } from "./sorting.js";
 import { companyLogo } from "./avatars.js";
 import { companySvg, isFreeMail, normalizeDomain, syncLogos } from "./logos.js";
-import { jevProviderOf, type Provider, type Mail, type SyncFailure } from "../shared/types.js";
+import { jevProviderOf, type Provider, type Mail, type StateResponse, type SyncFailure } from "../shared/types.js";
 import { emptyComposePreferences } from "../shared/mail-features.js";
 
 const configPath = process.env.MAIL_CONFIG_PATH || ".env";
@@ -47,6 +51,7 @@ const allowedOrigins = new Set([
 const csrf = randomBytes(32).toString("hex");
 let syncing = false;
 let unreadArrivals = 0;
+let mailArrivals: MailArrival[] = [];
 let syncRun: Promise<string[]> | undefined;
 let wakeSync: (() => void) | undefined;
 let imapWatch: ImapWatch | undefined;
@@ -109,26 +114,53 @@ app.use("/api", (req, res, next) => {
       .json({ error: "Wait for the current sync to finish, then try again." });
   next();
 });
-mountDrafts(app);
-app.get("/api/state", (_req, res) => {
-  res.json({
-    composePreferences: all("compose")[0] ?? emptyComposePreferences,
-    unreadArrivals,
-    csrf,
-    accounts: all("account").map(({ credentials: _credentials, ...a }) => ({ ...a, syncStatus: accountSyncStatus(a.id) })),
-    messages: all("mail"),
-    labels: all("label"),
-    rules: all("rule"),
-    googleConfigured: !!(
-      process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-    ),
-    googleClientId: process.env.GOOGLE_CLIENT_ID || null,
-    jevConfigured: !!process.env.TYPESAFE_API_KEY,
-    jevProvider: jevProviderOf(process.env.TYPESAFE_PROVIDER),
-    aiConfigured: !!process.env.OPENAI_API_KEY,
-    lastSync: all("meta")[0]?.lastSync || null,
-    syncing,
-  });
+mountDrafts(app, () => desktopEvents.emit("mail-changed"));
+mountWorkspace(app);
+mountAgentProvider(app);
+app.get("/api/state", async (req, res) => {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  res.once("close", cancel);
+  try {
+    let status!: Omit<StateResponse, "messages" | "mailCursor" | "mailMode" | "removedMailIds">;
+    const changes = await mailChanges(typeof req.query.mailCursor === "string" ? req.query.mailCursor : undefined, () => {
+      // Capture status at the same boundary as the encrypted mail view, before decoding yields.
+      mailArrivals = mailArrivals.filter((arrival) => !!get("mail", arrival.mail.id));
+      status = {
+      draftCount: count("draft"),
+      composePreferences: all("compose")[0] ?? emptyComposePreferences,
+      unreadArrivals,
+      mailArrivals,
+      csrf,
+      accounts: all("account").map(({ credentials: _credentials, ...a }) => ({ ...a, syncStatus: accountSyncStatus(a.id) })),
+      labels: all("label"),
+      rules: all("rule"),
+      googleConfigured: !!(
+        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ),
+      googleClientId: process.env.GOOGLE_CLIENT_ID || null,
+      jevConfigured: !!process.env.TYPESAFE_API_KEY,
+      jevProvider: jevProviderOf(process.env.TYPESAFE_PROVIDER),
+      aiConfigured: !!process.env.OPENAI_API_KEY,
+      lastSync: all("meta")[0]?.lastSync || null,
+      syncing,
+      };
+    }, controller.signal);
+    if (res.destroyed) return;
+    const { messages, ...mailStatus } = changes;
+    // Serialize bounded records so a large initial snapshot does not monopolize the main loop.
+    res.type("json");
+    res.write(JSON.stringify({ ...status, ...mailStatus }).slice(0, -1) + ',"messages":[');
+    for (let i = 0; i < messages.length; i++) {
+      if (res.destroyed) return;
+      const ready = res.write((i ? "," : "") + JSON.stringify(messages[i]));
+      if (!ready) await new Promise<void>((resolve) => { const done = () => { res.off("drain", done); res.off("close", done); resolve(); }; res.once("drain", done); res.once("close", done); });
+      if ((i + 1) % 32 === 0) await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    if (!res.destroyed) res.end("]}");
+  } catch (error) {
+    if (!controller.signal.aborted) throw error;
+  } finally { res.off("close", cancel); }
 });
 app.get("/api/compose-preferences", (_req, res) => {
   res.json(all("compose")[0] ?? emptyComposePreferences);
@@ -413,6 +445,12 @@ app.delete("/api/accounts/:id", (req, res) => {
     }
     for (const draft of all("draft").filter((draft) => draft.accountId === req.params.id))
       remove("draft", draft.id);
+    removeAccountAttachments(req.params.id);
+    remove("coverage", req.params.id);
+    for (const rule of all("rule").filter((rule) => rule.accountId === req.params.id)) remove("rule", rule.id);
+    for (const proposal of all("proposal").filter((proposal) => proposal.accountId === req.params.id)) remove("proposal", proposal.id);
+    for (const grant of all("agent").filter((grant) => grant.accountIds.includes(req.params.id)))
+      put("agent", grant.id, { ...grant, accountIds: grant.accountIds.filter((id) => id !== req.params.id) });
     for (const m of all("mail").filter((m) => m.accountId === req.params.id))
       remove("mail", m.id);
     for (const label of all("label").filter((label) => label.accountId === req.params.id))
@@ -445,7 +483,7 @@ function requestSync(ids: string[], reconnect = false): Promise<string[]> {
     return syncRun;
   }
   syncing = true;
-  let newUnread = 0;
+  const newUnread: NotificationMail[] = [];
   syncRun = runMailWork(async () => {
     const errors: string[] = [];
     const active = new Map<string, Promise<void>>();
@@ -458,7 +496,7 @@ function requestSync(ids: string[], reconnect = false): Promise<string[]> {
           const a = all("account").find((a) => a.id === id);
           if (!a) continue;
           activeAccounts.add(id);
-          active.set(id, syncAccount(a, errors, (count) => { newUnread += count; })
+          active.set(id, syncAccount(a, errors, (messages) => { newUnread.push(...messages); })
             .catch((error) => {
               const failure = syncError(error, a.provider, "sync");
               const message = `${a.email}: ${failure.message}`;
@@ -481,9 +519,9 @@ function requestSync(ids: string[], reconnect = false): Promise<string[]> {
       syncing = false;
       syncRun = undefined;
       scheduledAccounts.clear();
-      unreadArrivals += newUnread;
+      for (const mail of newUnread) mailArrivals.push({ sequence: ++unreadArrivals, mail });
       desktopEvents.emit("mail-changed");
-      if (newUnread) desktopEvents.emit("new-mail", newUnread);
+      if (newUnread.length) desktopEvents.emit("new-mail", newUnread.length, newUnread);
     }
   });
   return syncRun;
@@ -492,12 +530,13 @@ function requestSync(ids: string[], reconnect = false): Promise<string[]> {
 async function syncAccount(
   a: StoredAccount,
   errors: string[],
-  onNewUnread: (count: number) => void,
+  onNewUnread: (messages: NotificationMail[]) => void,
 ) {
   const currentAccount = () => all("account").find((current) => sameImapAccount(current, a));
   const existing = new Map(
-    all("mail").filter((m) => m.accountId === a.id).map((m) => [m.id, m]),
+    (await readMail(a.id)).filter((m) => m.direction !== "sent").map((m) => [m.id, m]),
   );
+  if (!currentAccount()) return;
   const hasSynced = a.hasSynced ?? existing.size > 0;
   const rules = all("rule");
   const fresh = new Map<string, Mail>();
@@ -574,8 +613,8 @@ async function syncAccount(
   }
   // A first import fills an empty cache, so only a later sync reports arrivals.
   if (!error && currentAccount()) {
-    const arrived = [...fresh.values()].filter((m) => m.unread).length;
-    if (arrived && hasSynced) onNewUnread(arrived);
+    const arrived = [...fresh.values()].filter((m) => m.unread).map(notificationMail);
+    if (arrived.length && hasSynced) onNewUnread(arrived);
   }
   const current = currentAccount();
   // A reconnect owns its new credentials and status, even if the old run finishes later.
@@ -601,7 +640,7 @@ app.post("/api/messages/:id/images", mailRequest(async (req, res) => {
 }));
 app.post("/api/messages/:id/content", mailRequest(async (req, res) => {
   const mail = findMail(z.string().parse(req.params.id));
-  if (mail.html !== undefined) return res.json({ html: mail.html, images: mail.images });
+  if (mail.html !== undefined && mail.attachments !== undefined) return res.json({ html: mail.html, images: mail.images, attachments: mail.attachments });
   const a = account(mail.accountId);
   const content = await providers[a.provider].content(a, mail);
   assertNotSyncing();
@@ -610,13 +649,13 @@ app.post("/api/messages/:id/content", mailRequest(async (req, res) => {
     throw new Error("Email identity changed. Content was not cached.");
   // Preserve image recovery and mail actions completed during the source fetch.
   const updated = { ...current, html: current.html === undefined ? content.html : current.html,
-    images: current.images ?? content.images };
+    images: current.images ?? content.images, attachments: current.attachments ?? content.attachments ?? [] };
   put("mail", mail.id, updated);
-  res.json({ html: updated.html, images: updated.images });
+  res.json({ html: updated.html, images: updated.images, attachments: updated.attachments });
 }));
 app.patch("/api/messages/:id", async (req, res) => {
   const input = messageActionSchema.parse(req.body);
-  if (!all("mail").some((m) => m.id === req.params.id))
+  if (!get("mail", req.params.id))
     return res.status(404).json({ error: "Message not found." });
   await updateMessage(req.params.id, input);
   res.json({ ok: true });
@@ -624,35 +663,12 @@ app.patch("/api/messages/:id", async (req, res) => {
 app.post("/api/send", async (req, res) => {
   res.json(await sendMail(req.body));
 });
-app.post("/api/rules", (req, res) => {
-  const input = z
-    .object({
-      sender: z.email(),
-      instruction: z.string().min(1).max(500),
-      category: z.enum(["important", "other"]),
-      relevance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-    })
-    .parse(req.body);
-  const previous = all("rule").find(
-    (r) => r.sender.toLowerCase() === input.sender.toLowerCase(),
-  );
-  const id = previous?.id || randomUUID();
-  put("rule", id, { ...input, id });
-  for (const m of all("mail"))
-    if (m.address.toLowerCase() === input.sender.toLowerCase())
-      put("mail", m.id, {
-        ...m,
-        category: input.category,
-        relevance: input.relevance,
-        reason: input.instruction,
-      });
-  res.json({ ok: true });
-});
 app.delete("/api/rules/:id", (req, res) => {
+  const removed = all("rule").find((rule) => rule.id === req.params.id);
   remove("rule", req.params.id);
   const rules = all("rule");
   for (const m of all("mail"))
-    put("mail", m.id, { ...m, ...sortMail(m, rules) });
+    if (removed && matchesRule(m, removed)) put("mail", m.id, { ...m, ...sortMail(m, rules) });
   res.json({ ok: true });
 });
 mountMcp(app, assertNotSyncing, () => desktopEvents.emit("mail-changed"));
@@ -660,7 +676,7 @@ const staticPath = process.env.MAIL_STATIC_DIR || path.resolve("dist");
 app.use((_req, res, next) => {
   res.set(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; media-src data:; base-uri 'none'; frame-ancestors 'none'",
   );
   next();
 });
@@ -688,7 +704,7 @@ export function startServer(
   port: number,
   onAccountConnected?: (error: string | null) => void,
   onMailChanged?: () => void,
-  onNewMail?: (count: number) => void,
+  onNewMail?: (count: number, messages: NotificationMail[]) => void,
   watchClient?: ImapWatchFactory,
   gmailRevision?: (account: StoredAccount) => Promise<string>,
 ): Promise<Server> {

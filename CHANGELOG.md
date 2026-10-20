@@ -2,6 +2,70 @@
 
 ## Unreleased
 
+- Approving an agent reply now saves it to Drafts and opens it in the composer. Nothing is sent until the user presses Send. Remove the now-unused Allow sending replies switch.
+- Hide account addresses in the composer From list in privacy mode and drop raw image-link placeholders from mail previews.
+- Document required bounded verification on shared Linux hosts, workflow failure cases and artifact-bound installed smoke checks. Keep synthetic, installed and real-account acceptance separate.
+- Keep assistant setup in Settings and proposed actions in Agent review. Move history controls beside search, start sender context closed and remove duplicate selected-email action bars.
+- Show Drafts as a searchable account-filtered list with sender, recipients, subject, preview, attachments and saved time. Preserve privacy and unknown-send warnings.
+- Anchor Snooze presets at the clicked control and show active snoozes in Calendar. Add text-size shortcuts and Page Up/Down email navigation. Keep reply context visible and accept validated attachment drops.
+- Make notification previews respect enabled delivery, details, privacy and sound, with a compact settings summary.
+
+- Add opt-in sender, subject and preview details to in-app and desktop new-mail notices, exact-email opening, and system/off/custom sound. Import bounded local audio without exposing its path. Keep privacy generic, prune removed-message details and preserve V2 delta updates.
+
+- Use small icon-only mail-row actions, a one-line Settings/sync footer, immediate snooze presets and quick Needs reply/Needs work/Waiting tracking. Simplify the composer, Projects picker and assistant cards. Confirm assistant removal, retain review history and deduplicate source links within each proposal. Support native horizontal history gestures without intercepting vertical scrolling.
+
+- Explain missing MCP assistant/account permissions instead of suggesting a sync retry. Keep denials enforced and clarify which assistant an OpenCode setup connects.
+
+- Complete the V2 navigation treatment with separate Workspace and Mail groups, a compact branded sidebar and bottom Settings. Show assistant cards with expandable permissions and connection setup, collapse new-assistant setup when assistants exist, and wrap preset descriptions. Add Track to the selected-email toolbar. Style notifications by type and let users dismiss the in-app queue together. Show projects as direct filter buttons.
+
+- Keep mail navigation visible in Settings, with a bottom Settings action and a ten-section rail. Replace Settings dropdowns with visible choices, including keyboard navigation. Keep search and Commands available across mail and work views. Separate Agent Reviews into Assistants, Review queue and Activity without changing permissions or approval behavior.
+
+- Integrate the optional source CLI for scoped mail and workspace reads, confirmed project and commitment creation, and draft proposals. Keep read/archive actions pending app review and preserve existing permissions.
+
+- Add explicit, default-off MCP grants to create single-account projects and track open commitments immediately without per-item review, plus separately scoped project and commitment lists. Reuse workspace validation, dates, encrypted persistence and history; require caller UUIDs for safe identical retries and reject changed or edited work. Preserve proposal approval and sending controls.
+
+- Revalidate pending mail reads after external database writes, keeping captured records and revision cursors in the same generation. Stop state-response decoding when its client disconnects while preserving shared initialization for other readers.
+
+- Bound encrypted mail reads and initial state serialization so they yield during large cached-mail loads. Reuse one mail view and each source fingerprint within proposal responses, scope sync cache reads by account, and use keyed message lookups. Reload unchanged status without mail bodies; apply changed records and explicit removals while retaining complete initial mail, body search and privacy behavior. Native responsiveness still needs measurement.
+
+- Mask known private account names in Projects cross-account approval labels while privacy is enabled. Preserve selected emails and explicit approval of the exact account set. The mounted regression retains source checkbox identities across selected-first sorting and privacy changes.
+
+- Mask known private account names in Agent Reviews allowed-account labels and existing-grant summaries while privacy is enabled. Preserve account selection and permission grants.
+
+- Mask known private names in the work coverage account label while privacy is enabled.
+
+- Simplify agent setup with provider and key first, optional model controls, and an explicit draft-only Reply assistant preset. Add editable reply, task and waiting templates for new commitments, with plain explanations of work sections, due dates and reminders.
+
+- Reconcile BYOK preparation with a workspace read started after preparation settles. Wait for an older read before fetching current proposals, retain the hold after a failed refresh, and avoid permission-refresh toggles during proposal reconciliation.
+
+- Mask cached source/evidence aliases in quick tracking and selected-account text in BYOK. Preserve quick-tracking drafts through recovery and hold BYOK preparation until current history is available. Restore mail shortcuts for opened Today sources; show status and reminder choices directly. Keep private editors hidden on dialog opening, with explicit focus to edit and blur to hide. Preserve input and block duplicate saves until refresh and review.
+
+- Add inline Today reading with the existing email reader, a compact commitment summary and preserved work-list selection and scroll. Add explicit per-deliverable quick tracking and local reminder presets from mail rows and the reader. Share the workspace and account-scoped due follow-up count across views, label stale data, and require refresh and review after unknown saves.
+
+- Add per-agent Bring your own key settings for OpenAI-compatible providers, including OpenAI and DeepSeek. Encrypt saved keys and prepare a reply from one explicitly selected cached email as a pending proposal for review. Keep provider output limited to reply text, preserve existing approval rules, and refuse stale evidence or revoked permissions. Hold further preparation after an unconfirmed response until action history refresh succeeds.
+
+- Add one-button OpenCode setup to each scoped MCP grant. The desktop app saves the grant's config into the user's OpenCode file, editing only `mcp.emc2` with a private backup and keeping the credential out of the interface, then enables MCP on the same click. Replace an existing different `emc2` connection only after confirmation; keep the copy-ready JSON under Advanced: manual setup.
+
+- Highlight mail-list sorting reasons such as Account and May need with the theme's sorting-reason color.
+
+- Fix the MCP endpoint Copy button in the desktop app. Use a native action restricted to copying that endpoint; keep browser clipboard permissions denied.
+
+- Show the saved-draft total beside Drafts in the sidebar, including zero. Refresh the desktop count after a draft is created, discarded or removed after sending.
+
+- Preserve evidence links when a commitment patch changes only its follow-up, deadline or status.
+
+- Add the V2 built-in follow-up calendar with month and agenda views, overdue and undated work, and one optional local follow-up time per commitment. Keep date-only deadlines, explicit completion and encrypted history separate.
+- Compact Today into grouped rows and an evidence inspector. Move commitment editing into a focused dialog with bounded source search, and shorten work navigation labels. Preserve edits by blocking app navigation while the dialog is open.
+
+- Ignore activation callbacks for destroyed native windows and clear the closed-window reference, preventing the main-process error during quit.
+
+- Add a local confirmed-work experiment with Today's actions, separate reply/work/waiting lists, source links, explicit completion and dated evidence history. Add client/project links with account-combination approval and source-backed decisions.
+- Import bounded Sent evidence separately from Inbox sync, show coverage gaps, and link cached conversations by account-scoped provider threads and message references.
+- Preview account-scoped Teach conditions before saving, including a visible question-mark heuristic and future-only application. Give agents account/tool grants and immutable proposals with explicit approval, revocation and encrypted action history.
+- Add Cc/group replies and bounded attachments to compose, encrypted draft recovery and MIME delivery. Restore Read, Reply, Snooze, Archive and Trash controls on hovered or keyboard-focused mail rows, retaining touch access.
+
+- Improve cached-mail search for canonical Unicode, Latin-accent variants and whitespace. Keep phrases inside individual fields and preserve email identifier distinctions. Reuse normalized documents in memory and invalidate them when searchable text changes; do not persist a plaintext search index.
+
 - Add customizable floating notifications in Settings: separate new-mail and action switches, position, duration, preview and reset. Confirm Snooze with its return time, Return to inbox, Archive and Trash; preserve confirmed outcomes when inbox refresh fails. Errors and uncertain-send warnings remain until dismissed.
 
 - Keep the release-validator test loader as a file URL so Node can import it on Windows.

@@ -1,8 +1,10 @@
 /* Menus, dropdowns and the segmented control. */
 .mail-menu {
+  display: grid;
   position: fixed;
   z-index: 40;
-  width: 200px;
+  width: max-content;
+  min-width: min(200px, calc(100vw - 16px));
   max-width: calc(100vw - 16px);
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
@@ -20,8 +22,12 @@
   min-height: 36px;
   padding: 6px 12px;
   justify-content: space-between;
+  gap: 16px;
+  text-align: left;
+  white-space: normal;
   border-radius: var(--radius-control);
 }
+.mail-menu kbd { flex-shrink: 0; }
 .mail-menu button:hover:not(:disabled) {
   text-decoration: underline;
 }
@@ -41,7 +47,7 @@
   border: 1px solid var(--line-2);
   border-radius: var(--radius-control);
   background: transparent;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   color: var(--text);
   transition: border-color 160ms var(--ease-out);
 }
@@ -84,7 +90,7 @@
   min-height: 36px;
   padding: 0 10px;
   border-radius: 5px;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   color: var(--text-2);
   cursor: pointer;
 }
@@ -109,7 +115,7 @@
   height: 28px;
   padding: 0 14px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   color: var(--text-2);
   transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out);
 }

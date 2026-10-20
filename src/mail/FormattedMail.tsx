@@ -36,6 +36,8 @@ export function FormattedMail({ html, showImages, renderText, redactText, privac
     if (tag === "font" && /^[1-7]$/.test(a.size || "")) style.fontSize = [10, 13, 16, 18, 24, 32, 48][Number(a.size) - 1];
     Object.assign(style, legacyAlign(tag, (a.align || "").toLowerCase()));
     Object.assign(style, mailStyle(a.style || ""));
+    // Sender sizes are already bounded; scale absolute sizes once, including legacy fonts.
+    if (style.fontSize) style.fontSize = `calc(${typeof style.fontSize === "number" ? `${style.fontSize}px` : style.fontSize} * var(--text-scale, 1))`;
     // Quotes take the app's own inset and bar, so nested replies keep their width.
     if (tag === "blockquote") for (const property of Object.keys(style) as (keyof CSSProperties)[])
       if (/^(margin|padding|border)/.test(property)) delete style[property];

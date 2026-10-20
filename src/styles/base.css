@@ -73,7 +73,7 @@ textarea {
   border: 1px solid var(--line-2);
   border-radius: var(--radius-control);
   padding: 8px 10px;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   min-width: 0;
   transition: border-color 160ms var(--ease-out);
 }
@@ -160,7 +160,7 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .empty-title {
   color: var(--text);
-  font-size: 14px;
+  font-size: calc(14px * var(--text-scale, 1));
   font-weight: 500;
 }
 .link {
@@ -184,7 +184,7 @@ input[type="checkbox"][role="switch"]:disabled {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-3);
 }
 .settings-form :is(input, select) {
@@ -205,7 +205,7 @@ input[type="checkbox"][role="switch"]:disabled {
   margin-top: 4px;
 }
 .form-actions > span {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-4);
 }
 .button {
@@ -216,7 +216,7 @@ input[type="checkbox"][role="switch"]:disabled {
   border: 1px solid var(--line-2);
   border-radius: var(--radius-control);
   background: var(--raised);
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   font-weight: 500;
   transition:
     background-color 140ms var(--ease-out),

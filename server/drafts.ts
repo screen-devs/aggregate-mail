@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import express from "express";
+import { attachmentsSchema } from "./providers.js";
 import { z } from "zod";
 import type { Draft, DraftSummary } from "../shared/types.js";
 import { all, get, put, remove, transaction } from "./store.js";
@@ -9,8 +10,10 @@ const accountIdSchema = z.string().min(1).max(200);
 const draftIdSchema = z.uuid();
 const revisionSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 // Drafts are incomplete text, not send requests. Send validation still happens at /api/send.
-const contentSchema = z.object({
+export const contentSchema = z.object({
   to: z.string().max(10000),
+  cc: z.array(z.string().max(320)).max(100).optional(),
+  attachments: attachmentsSchema.optional(),
   subject: z.string().max(998),
   body: z.string().max(1000000),
   inReplyTo: z.string().max(998).optional(),
@@ -42,8 +45,9 @@ export function listDrafts(accountId: string): DraftSummary[] {
   requireAccount(accountId);
   return all("draft").filter((draft) => draft.accountId === accountId)
     .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
-    .map(({ id, accountId, revision, updatedAt, to, subject, sendUnknown }) =>
-      ({ id, accountId, revision, updatedAt, to, subject, sendUnknown }));
+    .map(({ id, accountId, revision, updatedAt, to, cc, subject, body, attachments, sendUnknown }) =>
+      ({ id, accountId, revision, updatedAt, to, cc, subject, sendUnknown,
+        preview: body.replace(/\s+/g, " ").trim().slice(0, 200), attachmentCount: attachments?.length || 0 }));
 }
 export function createDraft(accountId: string, value: unknown): Draft {
   const content = contentSchema.parse(value);
@@ -85,16 +89,21 @@ export function deleteDraft(accountId: string, id: string, value: unknown) {
   });
 }
 
-export function mountDrafts(app: express.Express) {
+export function mountDrafts(app: express.Express, onChanged: () => void) {
   const router = express.Router({ mergeParams: true });
   type Params = { accountId: string; id: string };
   // These routes inherit /api session, origin, CSRF, update and cache guards.
   router.get<Pick<Params, "accountId">>("/", (req, res) => { res.json(listDrafts(req.params.accountId)); });
-  router.post<Pick<Params, "accountId">>("/", (req, res) => { res.status(201).json(createDraft(req.params.accountId, req.body)); });
+  router.post<Pick<Params, "accountId">>("/", (req, res) => {
+    const draft = createDraft(req.params.accountId, req.body);
+    onChanged();
+    res.status(201).json(draft);
+  });
   router.get<Params>("/:id", (req, res) => { res.json(readDraft(req.params.accountId, req.params.id)); });
   router.put<Params>("/:id", (req, res) => { res.json(saveDraft(req.params.accountId, req.params.id, req.body)); });
   router.delete<Params>("/:id", (req, res) => {
     deleteDraft(req.params.accountId, req.params.id, req.body);
+    onChanged();
     res.json({ ok: true });
   });
   router.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {

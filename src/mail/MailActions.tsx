@@ -1,22 +1,24 @@
-import type { ComponentType } from "react";
+import type { ComponentType, MouseEvent } from "react";
 import type { Mail } from "../../shared/types";
-import { Archive, Check, ChevronDown, ChevronUp, Clock, Close, Inbox, Pin, Reply, Trash } from "../ui/icons";
+import { Archive, Calendar, Check, ChevronDown, ChevronUp, Clock, Close, Inbox, Pin, Reply, Trash } from "../ui/icons";
 
 type Icon = ComponentType<{ color?: string; size?: number }>;
 
-// An icon-only toolbar button in the manner of Mail: the name is its label and tooltip.
-function Tool({ label, title, Icon, disabled, busy, onClick }: {
+// Keep the accessible name when compact layouts hide the visible label.
+function Tool({ label, text = label, title, Icon, disabled, busy, onClick }: {
   label: string;
+  text?: string;
   title?: string;
   Icon: Icon;
   disabled?: boolean;
   busy?: boolean;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button type="button" className="tool" aria-label={label} title={title ?? label}
       disabled={disabled} aria-busy={busy} onClick={onClick}>
       <Icon color="currentColor" size={16} />
+      <span className="tool-label">{text}</span>
     </button>
   );
 }
@@ -29,7 +31,7 @@ function Tool({ label, title, Icon, disabled, busy, onClick }: {
 export function MailActions({
   mail, opened, reading, busy, syncing, snoozed, trashUnavailable, shortcut,
   onRead, onReply, onArchive, onTrash, onSnooze, onUnsnooze, onClose,
-  onPrevious, onNext, previousDisabled, nextDisabled, onPin,
+  onPrevious, onNext, previousDisabled, nextDisabled, onPin, onTrack,
 }: {
   mail: Mail;
   opened: boolean;
@@ -43,7 +45,7 @@ export function MailActions({
   onReply: () => void;
   onArchive: () => void;
   onTrash: () => void;
-  onSnooze: () => void;
+  onSnooze: (event: MouseEvent<HTMLButtonElement>) => void;
   onUnsnooze: () => void;
   onClose: () => void;
   onPrevious?: () => void;
@@ -51,26 +53,28 @@ export function MailActions({
   previousDisabled?: boolean;
   nextDisabled?: boolean;
   onPin?: () => void;
+  onTrack?: () => void;
 }) {
   const readLabel = reading ? "Marking as read…" : mail.unread ? "Mark as read" : "Read";
   return (
     <div className="mail-actions" role="group" aria-label={opened ? "Opened email actions" : "Selected email actions"}>
       <div className="tool-group">
         <Tool label="Archive" title={`Archive in your provider (${shortcut("done")})`} Icon={Archive}
-          disabled={busy || syncing || mail.archived} onClick={onArchive} />
-        <Tool label="Move to Trash" title={trashUnavailable || "Move to Trash"} Icon={Trash}
+          disabled={busy || syncing || mail.archived || mail.direction === "sent"} onClick={onArchive} />
+        <Tool label="Move to Trash" text="Trash" title={trashUnavailable || "Move to Trash"} Icon={Trash}
           disabled={busy || syncing || !!trashUnavailable} onClick={onTrash} />
         {snoozed ? (
           <Tool label="Return to inbox" Icon={Inbox} disabled={busy || syncing} onClick={onUnsnooze} />
         ) : (
           <Tool label="Snooze" title={`Snooze (${shortcut("snooze")})`} Icon={Clock}
-            disabled={busy || syncing || mail.archived} onClick={onSnooze} />
+            disabled={busy || syncing || mail.archived || mail.direction === "sent"} onClick={onSnooze} />
         )}
       </div>
       <div className="tool-group">
         <Tool label="Reply" title={`Reply (${shortcut("reply")})`} Icon={Reply} disabled={busy} onClick={onReply} />
-        <Tool label={readLabel} Icon={Check} disabled={!mail.unread || reading} busy={reading} onClick={onRead} />
-        {onPin && <Tool label={mail.pinned ? "Unpin email" : "Pin email"} title={`${mail.pinned ? "Unpin" : "Pin"} email (local to this app)`} Icon={Pin}
+        <Tool label={readLabel} text="Read" Icon={Check} disabled={mail.direction === "sent" || !mail.unread || reading} busy={reading} onClick={onRead} />
+        {onTrack && <Tool label="Track work" text="Track" Icon={Calendar} disabled={busy} onClick={onTrack} />}
+        {onPin && <Tool label={mail.pinned ? "Unpin email" : "Pin email"} text={mail.pinned ? "Unpin" : "Pin"} title={`${mail.pinned ? "Unpin" : "Pin"} email (local to this app)`} Icon={Pin}
           disabled={busy} onClick={onPin} />}
       </div>
       <span role="status">{reading ? "Read update pending." : busy ? "Updating email…" : ""}</span>

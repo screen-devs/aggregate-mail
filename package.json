@@ -16,7 +16,8 @@
     "package:mac": "npm run build && electron-builder --mac dmg zip --publish never",
     "package:mac:dir": "npm run build && electron-builder --mac --dir --publish never",
     "check:desktop": "node scripts/launch-desktop.mjs --check-startup",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "cli": "node scripts/emc2.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
@@ -25,6 +26,7 @@
     "googleapis": "^160.0.0",
     "htmlparser2": "10.1.0",
     "imapflow": "^1.0.0",
+    "jsonc-parser": "^3.3.1",
     "mailparser": "^3.7.0",
     "nodemailer": "^10.0.16",
     "react": "^19.0.0",
@@ -55,7 +57,7 @@
   "author": "Screen",
   "build": {
     "appId": "dev.screen.aggregate-mail",
-    "productName": "Emc²",
+    "productName": "Emc\u00b2",
     "directories": {
       "output": "release"
     },
@@ -110,5 +112,8 @@
       "owner": "screen-devs",
       "repo": "aggregate-mail"
     }
+  },
+  "bin": {
+    "emc2": "scripts/emc2.mjs"
   }
 }

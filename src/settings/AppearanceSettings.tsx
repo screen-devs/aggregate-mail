@@ -75,7 +75,7 @@ export function AppearanceSettings({ value, scheme, onChange, onPreview = noPrev
   return (
     <div className="appearance-settings">
       <div className="settings-group">
-        <div className="settings-row">
+        <div className="settings-row stacked">
           <span id="mode-label">Mode</span>
           <Segmented labelledBy="mode-label" value={value.mode} choices={modes}
             onChange={(mode) => onChange({ ...value, mode })} />
@@ -158,13 +158,13 @@ export function AppearanceSettings({ value, scheme, onChange, onPreview = noPrev
       </div>
       <h2>Window</h2>
       <div className="settings-group">
-        <div className="settings-row">
+        <div className="settings-row stacked">
           <span id="transparency-label">Transparency</span>
           <Segmented labelledBy="transparency-label" value={glass ? value.transparency : "off"}
             choices={transparencyChoices()} disabled={(choice) => !glass && choice !== "off"}
             onChange={(transparency) => onChange({ ...value, transparency })} />
         </div>
-        <div className="settings-row">
+        <div className="settings-row stacked reading-layouts">
           <span id="reading-label">Reading pane</span>
           <Segmented labelledBy="reading-label" value={value.reading} choices={readingLayouts}
             onChange={(reading) => onChange({ ...value, reading })} />

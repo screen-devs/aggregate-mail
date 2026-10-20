@@ -73,3 +73,16 @@ test("send validation rejects header injection and invalid recipient", () => {
   );
   assert.ok(!sendSchema.safeParse({ ...valid, to: "invalid" }).success);
 });
+
+test("scoped conditional Teach wins over global and unconditional rules consistently", () => {
+  const mail = { id: "a:cached", accountId: "a", address: "sender@example.test", subject: "Review the proposal", preview: "Please review", body: "Please review", to: "a@example.test" };
+  const common = { sender: mail.address, instruction: "Legacy", category: "important" as const, relevance: 3 as const };
+  const rules = [
+    { ...common, id: "legacy" },
+    { ...common, id: "account", accountId: "a", instruction: "Account", createdAt: 2 },
+    { ...common, id: "conditional", accountId: "a", instruction: "Conditional", category: "other" as const, relevance: 1 as const, condition: { field: "subject" as const, contains: "proposal" }, createdAt: 1 },
+  ];
+  assert.equal(sortMail(mail, rules).reason, "Conditional");
+  assert.equal(sortMail({ ...mail, accountId: "b" }, rules).reason, "Legacy");
+  assert.equal(sortMail(mail, [{ ...rules[2], excludedMailIds: [mail.id] }, rules[0], rules[1]]).reason, "Account");
+});

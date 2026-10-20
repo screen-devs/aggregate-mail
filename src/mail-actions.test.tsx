@@ -12,7 +12,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-async function mount(preferences?: NotificationPreferences) {
+async function mount(preferences?: NotificationPreferences, revisionContract = false, nativeNotifications = false) {
   const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/" });
   dom.window.HTMLElement.prototype.scrollTo = () => {};
   dom.window.HTMLElement.prototype.scrollIntoView = () => {};
@@ -44,8 +44,28 @@ async function mount(preferences?: NotificationPreferences) {
     labels: [], rules: [], googleConfigured: false, googleClientId: null, jevConfigured: false,
     jevProvider: "typesafe", aiConfigured: false, lastSync: null, syncing: false,
   };
+  const stateRequests: string[] = [];
+  let generation = "synthetic-generation", revision = 0, truncated = false;
+  const sentRecords = new Map<string, { value: string; revision: number }>();
+  const removals = new Map<string, number>();
   let changed: (() => void) | undefined;
+  let notificationOpen: ((id: string) => void) | undefined;
+  const configured: { value: NotificationPreferences; privacy: boolean }[] = [];
+  const audioCommands: string[] = [];
+  let customAudio = false;
+  let cancelAudio = false;
   (dom.window as unknown as Window).desktop = {
+    notifications: nativeNotifications ? {
+      configure: async (value, privacy) => { configured.push({ value, privacy }); return true; },
+      onOpen: (callback) => { notificationOpen = callback; return () => { notificationOpen = undefined; }; },
+      audio: async (command) => {
+        audioCommands.push(command);
+        if (command === "choose" && !cancelAudio) customAudio = true;
+        if (command === "remove") customAudio = false;
+        return { custom: customAudio, ...(command === "choose" && !cancelAudio ? { imported: true } : {}) };
+      },
+      preview: () => { audioCommands.push("preview"); },
+    } : undefined,
     platform: "linux", materials: false, oauthUrl: "", windowCommand() {}, onNavigation: () => () => {},
     onWindowState: () => () => {}, onAccountConnected: () => () => {},
     onMailChanged: (callback) => { changed = callback; return () => { changed = undefined; }; },
@@ -62,9 +82,26 @@ async function mount(preferences?: NotificationPreferences) {
   globalThis.fetch = async (input, options) => {
     const url = String(input);
     let data: unknown = {};
-    if (url === "/api/state") {
+    if (url.startsWith("/api/state")) {
+      stateRequests.push(url);
       if (rejectRefresh) throw new Error("Synthetic refresh failure");
       data = { ...(stateGate ? await stateGate.promise : structuredClone(state)), csrf: "synthetic" };
+      if (truncated) return new Response("{", { headers: { "Content-Type": "application/json" } });
+      if (revisionContract) {
+        const snapshot = structuredClone(state);
+        const ids = new Set(snapshot.messages.map(m => m.id));
+        for (const m of snapshot.messages) {
+          const value = JSON.stringify(m);
+          if (sentRecords.get(m.id)?.value !== value) { sentRecords.set(m.id, { value, revision: ++revision }); removals.delete(m.id); }
+        }
+        for (const id of sentRecords.keys()) if (!ids.has(id)) { sentRecords.delete(id); removals.set(id, ++revision); }
+        const cursor = new URL(url, "http://localhost").searchParams.get("mailCursor");
+        const [priorGeneration, priorRevision] = (cursor || "").split(":");
+        const delta = priorGeneration === generation && Number(priorRevision) <= revision;
+        data = { ...snapshot, csrf: "synthetic", mailCursor: `${generation}:${revision}`, mailMode: delta ? "delta" : "snapshot",
+          messages: delta ? snapshot.messages.filter(m => sentRecords.get(m.id)!.revision > Number(priorRevision)) : snapshot.messages,
+          removedMailIds: delta ? [...removals].filter(([, r]) => r > Number(priorRevision)).map(([id]) => id) : [] };
+      }
     } else if (url === "/api/sync") {
       data = { errors: [] };
     } else if (options?.method === "PATCH") {
@@ -108,6 +145,7 @@ async function mount(preferences?: NotificationPreferences) {
   const container = dom.window.document.getElementById("root")!;
   const root = createRoot(container);
   await act(async () => root.render(<App />));
+    await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
   const button = (label: string, scope: ParentNode = container) => {
     const found = [...scope.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
       button.getAttribute("aria-label") === label || button.textContent?.trim() === label || button.firstChild?.textContent?.trim() === label);
@@ -122,11 +160,17 @@ async function mount(preferences?: NotificationPreferences) {
   };
   const row = (id = "a:1:5") => container.querySelector<HTMLButtonElement>(`[id='mail-${id}']`)!;
   const trash = (id = "a:1:5") => button("Move to Trash", row(id).parentElement!);
-  const toolbar = () => container.querySelector<HTMLElement>(".mail-actions")!;
+  const toolbar = () => container.querySelector<HTMLElement>(".mail-actions") || container.querySelector<HTMLElement>(".row.selected")?.parentElement?.querySelector<HTMLElement>(".row-actions") || container.querySelector<HTMLElement>(".row-actions")!;
   const dialog = () => container.querySelector<HTMLElement>('[role="dialog"]')!;
   return {
-    state, container, button, click, key, row, trash, toolbar, dialog, mutations, drafts,
+    state, container, button, click, key, row, trash, toolbar, dialog, mutations, drafts, stateRequests, configured, audioCommands,
+    resetGeneration: () => { generation = "replacement-generation"; },
+    truncateState: (value: boolean) => { truncated = value; },
+    notificationClick: async (id: string) => { await act(async () => notificationOpen?.(id)); },
+    cancelAudio: (value: boolean) => { cancelAudio = value; },
+    remount: async () => { await act(async () => root.render(null)); await act(async () => root.render(<App />)); },
     refresh: async () => { await act(async () => changed?.()); },
+    refreshBurst: async () => { await act(async () => { changed?.(); changed?.(); changed?.(); }); },
     open: async (id = "a:1:5") => { await click(row(id)); await key("Enter", row(id)); },
     // JSDOM has no native button default action; model Enter after dispatching the key.
     activate: async (target: HTMLButtonElement) => {
@@ -165,14 +209,14 @@ test("selected and reader toolbars confirm reads immediately, coalesce opens and
   try {
     await app.click(app.row());
     assert.equal(app.mutations.length, 0, "selection alone never marks read");
-    assert.equal(app.toolbar().getAttribute("aria-label"), "Selected email actions");
+    assert.equal(app.toolbar().getAttribute("aria-label"), "Email row actions");
     assert.equal(app.container.querySelector("button button"), null);
     const read = app.holdRead();
     await app.click(app.button("Mark as read", app.toolbar()));
     const pending = app.button("Marking as read…", app.toolbar());
     assert.equal(pending.disabled, true);
     assert.equal(pending.getAttribute("aria-busy"), "true");
-    assert.match(app.toolbar().textContent!, /Read update pending/);
+    assert.equal(pending.textContent, "", "row actions stay icon-only while the accessible name reports progress");
     assert.ok(app.row().classList.contains("unread"), "no success while pending");
     await app.open();
     await app.key("Escape");
@@ -218,7 +262,7 @@ test("pointer Snooze and keyboard Return to inbox use the local message action",
   try {
     await app.click(app.row("b:1:5"));
     await app.click(app.button("Snooze", app.toolbar()));
-    await app.activate(app.button("In one hour", app.dialog()));
+    await app.activate(app.button("In one hour", app.container.querySelector('[role="menu"]')!));
     assert.deepEqual(app.mutations, [{ id: "b:1:5", action: "snooze" }]);
     assert.equal(app.container.querySelector(".toast-success .toast-text")?.textContent,
       `Email snoozed until ${new Date(app.state.messages.find((mail) => mail.id === "b:1:5")!.snoozedUntil!).toLocaleString()}.`);
@@ -231,7 +275,7 @@ test("pointer Snooze and keyboard Return to inbox use the local message action",
     assert.equal(app.state.messages.find((mail) => mail.id === "b:1:5")!.snoozedUntil, null);
     await app.click(app.button("Inbox3"));
     await app.key("s");
-    assert.equal(app.dialog().getAttribute("aria-label"), "Snooze");
+    assert.equal(app.container.querySelector('[role="menu"]')?.getAttribute("aria-label"), "Snooze email");
     await app.key("Escape");
     assert.equal(app.dialog(), null);
     await app.click(app.button("Archive", app.toolbar()));
@@ -322,6 +366,7 @@ test("row Trash targets an unselected email without opening or marking it read",
     const trash = app.trash("b:1:5");
     assert.ok(trash.querySelector("svg"));
     assert.equal(trash.textContent, "");
+    assert.equal(trash.getAttribute("aria-label"), "Move to Trash");
     assert.equal(app.container.querySelector("button button"), null);
     await app.activate(trash);
     assert.equal(app.container.querySelector(".message"), null);
@@ -346,10 +391,11 @@ test("Up and Down select mail without scrolling, opening or changing read state"
     assert.equal(app.row().getAttribute("aria-current"), "true");
     assert.equal((await app.key("ArrowUp", app.row())).defaultPrevented, true, "edge does not scroll page");
     await app.key("ArrowDown", app.row(), { ctrlKey: true });
+    assert.equal(app.row().getAttribute("aria-current"), "true", "modified arrow keys retain their owner");
     await app.key("PageDown", app.row());
-    assert.equal(app.row().getAttribute("aria-current"), "true");
-    await app.click(app.button("Search mail"));
-    const search = app.container.querySelector<HTMLInputElement>('[aria-label="Search all synced mail"]')!;
+    assert.equal(app.row("b:1:5").getAttribute("aria-current"), "true", "Page Down selects the next email");
+    await act(async () => app.container.querySelector<HTMLInputElement>('.app-search-toolbar input')!.focus());
+    const search = app.container.querySelector<HTMLInputElement>('input[aria-describedby="mail-search-help"]')!;
     assert.equal((await app.key("ArrowDown", search)).defaultPrevented, false);
     await app.key("Escape", search);
     await app.open();
@@ -373,13 +419,13 @@ test("commands pin cached mail, structured search finds it and arrival notices a
     await app.click(pin);
     assert.equal(app.dialog(), null, "command closes before action");
     assert.deepEqual(app.mutations, [{ id: "a:1:5", action: "pin" }]);
-    assert.ok(app.button("Unpin email", app.toolbar()));
     assert.match(app.row().getAttribute("aria-label")!, /^Pinned:/);
     await app.key("k", app.row(), { ctrlKey: true });
     await app.click([...app.dialog().querySelectorAll<HTMLElement>('[role="option"]')].find((option) => option.textContent === "Show pinned emails in this view")!);
     assert.equal(app.container.querySelectorAll(".row").length, 1);
     assert.ok(app.row());
-    await app.click(app.button("Unpin email", app.toolbar()));
+    await app.key("k", app.row(), { ctrlKey: true });
+    await app.click([...app.dialog().querySelectorAll<HTMLElement>('[role="option"]')].find((option) => option.textContent === "Unpin email")!);
     assert.equal(app.container.querySelectorAll(".row").length, 0);
     app.state.unreadArrivals = 1;
     await app.refresh();
@@ -402,7 +448,7 @@ test("saved Compose settings reach new drafts, templates and account signatures 
     };
     await app.refresh();
     await app.click(app.button("Settings"));
-    await app.click(app.button("Compose"));
+    await app.click(app.button("Templates and signatures"));
     const settings = app.container.querySelector<HTMLElement>(".compose-settings")!;
     assert.ok(settings);
     await app.click(app.button("Save compose preferences", settings));
@@ -441,17 +487,17 @@ test("archive reports confirmed success even when inbox refresh fails", async ()
   } finally { await app.close(); }
 });
 
-test("dialog and context menu Return to inbox confirm the local action", async () => {
-  for (const entry of ["dialog", "context"] as const) {
+test("snooze and context menus Return to inbox confirm the local action", async () => {
+  for (const entry of ["snooze", "context"] as const) {
     const app = await mount();
     try {
       app.state.messages[0].snoozedUntil = Date.now() + 3600000;
       await app.refresh();
       await app.click(app.button("Snoozed1"));
-      if (entry === "dialog") {
+      if (entry === "snooze") {
         await app.click(app.row());
         await app.key("s");
-        await app.click(app.button("Return to inbox now", app.dialog()));
+        await app.click(app.button("Return to inbox now", app.container.querySelector('[role="menu"][aria-label="Snooze email"]')!));
       } else {
         await act(async () => app.row().dispatchEvent(new app.container.ownerDocument.defaultView!.MouseEvent("contextmenu", { bubbles: true, clientX: 100, clientY: 100 })));
         const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.includes("Return to inbox"));
@@ -474,7 +520,7 @@ test("pending and failed mail actions never publish success", async () => {
       await app.click(app.row());
       const gate = app.holdAction(); app.failAction();
       await app.click(app.button(action === "archive" ? "Archive" : action === "snooze" ? "Snooze" : "Return to inbox", app.toolbar()));
-      if (action === "snooze") await app.click(app.button("In one hour", app.dialog()));
+      if (action === "snooze") await app.click(app.button("In one hour", app.container.querySelector('[role="menu"]')!));
       assert.equal(app.container.querySelector(".toast-success"), null);
       await app.finish(gate);
       assert.equal(app.container.querySelector(".toast-success"), null);
@@ -503,7 +549,7 @@ test("notification preferences validate stored fields and handle unavailable sto
 });
 
 test("mounted Notifications settings honor persisted choices, preview, changes, reset and write failure", async () => {
-  const app = await mount({ newMail: false, confirmations: false, position: "top-right", duration: 0 });
+  const app = await mount({ ...notificationDefaults, newMail: false, confirmations: false, position: "top-right", duration: 0 });
   try {
     assert.ok(app.container.querySelector(".toast-stack-top-right"));
     app.state.unreadArrivals = 2; await app.refresh();
@@ -513,16 +559,20 @@ test("mounted Notifications settings honor persisted choices, preview, changes, 
     await app.click(app.button("Settings")); await app.click(app.button("Notifications"));
     let settings = app.container.querySelector<HTMLElement>('[aria-label="Notification settings"]')!;
     let switches = settings.querySelectorAll<HTMLInputElement>('input[role="switch"]');
-    assert.deepEqual([...switches].map((input) => input.checked), [false, false]);
-    const selects = settings.querySelectorAll("select");
-    assert.deepEqual([...selects].map((select) => select.value), ["top-right", "0"]);
-    assert.match(settings.textContent!, /Errors and delivery warnings remain until dismissed/);
+    assert.deepEqual([...switches].map((input) => input.checked), [false, false, true, false, false, false, true]);
+    assert.deepEqual([...settings.querySelectorAll('[role="radio"][aria-checked="true"]')].map(button => button.textContent), ["Top right", "Until dismissed", "System default"]);
+    assert.equal(settings.querySelector("select"), null);
+    assert.match(settings.textContent!, /Errors stay visible until dismissed/);
     await app.click(app.button("Preview notification", settings));
-    assert.equal(app.container.querySelector(".toast-info .toast-text")?.textContent, "This is a sample in-app notification.");
-    await act(async () => { selects[0].value = "bottom-center"; selects[0].dispatchEvent(new window.Event("change", { bubbles: true })); });
-    await act(async () => { selects[1].value = "3000"; selects[1].dispatchEvent(new window.Event("change", { bubbles: true })); });
+    assert.equal(app.container.querySelector(".toast-info"), null, "preview obeys the disabled in-app switch");
+    const preview = settings.querySelector('[aria-label="Notification preview settings"]')!;
+    assert.match(preview.textContent!, /In-appOff/);
+    assert.match(preview.textContent!, /DesktopRequires the desktop app/);
+    assert.match(preview.textContent!, /DetailsHidden/);
+    await app.click(app.button("Bottom center", settings));
+    await app.click(app.button("3 seconds", settings));
     assert.ok(app.container.querySelector(".toast-stack-bottom-center"));
-    assert.deepEqual(readNotifications(), { newMail: false, confirmations: false, position: "bottom-center", duration: 3000 });
+    assert.deepEqual(readNotifications(), { ...notificationDefaults, newMail: false, confirmations: false, position: "bottom-center", duration: 3000 });
     await app.click(switches[0]); await app.click(switches[1]);
     assert.equal(readNotifications().newMail, true); assert.equal(readNotifications().confirmations, true);
     await app.click(app.button("Reset notification defaults", settings));
@@ -548,7 +598,7 @@ test("mounted Notifications settings honor persisted choices, preview, changes, 
 });
 
 test("App routes persisted and changed durations to mounted preview notices", async (context) => {
-  const app = await mount({ ...notificationDefaults, confirmations: false, newMail: false, duration: 3000 });
+  const app = await mount({ ...notificationDefaults, confirmations: false, newMail: true, duration: 3000 });
   context.mock.timers.enable({ apis: ["Date", "setTimeout"] });
   const tick = async (ms: number) => { await act(async () => context.mock.timers.tick(ms)); };
   try {
@@ -556,9 +606,8 @@ test("App routes persisted and changed durations to mounted preview notices", as
     await app.click(app.button("Preview notification"));
     await tick(2999); assert.ok(app.container.querySelector(".toast-info"));
     await tick(1); assert.equal(app.container.querySelector(".toast-info"), null);
-    const duration = app.container.querySelectorAll<HTMLSelectElement>('[aria-label="Notification settings"] select')[1];
     const changeDuration = async (value: string) => {
-      await act(async () => { duration.value = value; duration.dispatchEvent(new window.Event("change", { bubbles: true })); });
+      await app.click(app.button(value === "0" ? "Until dismissed" : `${Number(value) / 1000} seconds`));
     };
     await changeDuration("10000");
     await app.click(app.button("Preview notification"));
@@ -569,4 +618,186 @@ test("App routes persisted and changed durations to mounted preview notices", as
     await app.click(app.button("Dismiss notification"));
     assert.equal(app.container.querySelector(".toast-info"), null);
   } finally { await app.close(); context.mock.timers.reset(); }
+});
+
+
+test("mounted revision reload preserves focus, full body/HTML updates, removals and generation recovery", async () => {
+  const app = await mount(undefined, true);
+  try {
+    assert.ok(app.stateRequests.some(url => url.includes("mailCursor=synthetic-generation")));
+    const first = app.row(); first.focus();
+    await app.refresh();
+    assert.equal(app.row(), first); assert.equal(document.activeElement, first);
+    app.state.messages[0] = { ...app.state.messages[0], subject: "Changed subject", body: "Updated searchable body", html: "<p>Updated formatted body</p>" };
+    await app.refreshBurst();
+    assert.match(app.row().textContent!, /Changed subject/);
+    assert.ok(app.row("a:1:6"), "untouched mail remains reachable");
+    app.state.messages = app.state.messages.filter(m => m.id !== "b:1:5");
+    await app.refresh(); assert.equal(app.row("b:1:5"), null);
+    await app.open(); assert.match(app.container.textContent!, /Updated searchable body|Updated formatted body/);
+    app.truncateState(true); app.state.messages[0].body = "After recovery body";
+    await app.refresh(); assert.match(app.container.textContent!, /JSON|property name/i);
+    app.truncateState(false); app.resetGeneration();
+    app.state.messages = [{ ...app.state.messages[0], id: "a:replacement", subject: "Replacement snapshot" }];
+    await app.refresh();
+    assert.equal(app.row("a:1:6"), null);
+    assert.ok(app.row("a:replacement"));
+  } finally { await app.close(); }
+});
+
+test("accepted arrival IDs drive private-safe toasts and exact reader navigation across filters", async () => {
+  const app = await mount({ ...notificationDefaults, sender: true, subject: true, preview: true }, true, true);
+  try {
+    await app.key("k", app.row(), { ctrlKey: true });
+    await app.click([...app.dialog().querySelectorAll<HTMLElement>('[role="option"]')].find((item) => item.textContent === "Show pinned emails in this view")!);
+    const target = app.state.messages[2];
+    app.state.unreadArrivals = 2;
+    app.state.mailArrivals = [
+      { sequence: 1, mail: { ...target, id: target.id } },
+      { sequence: 2, mail: { ...target, id: "removed:exact", subject: "Another synthetic subject" } },
+    ];
+    const focused = app.container.ownerDocument.activeElement;
+    await app.refresh();
+    assert.equal(app.container.querySelectorAll(".toast-info").length, 2);
+    assert.equal(app.container.ownerDocument.activeElement, focused, "passive arrivals preserve focus");
+    assert.match(app.container.querySelector(".toast-text")!.textContent!, /Private Reader message 5/);
+    assert.match(app.container.querySelector(".toast-text")!.textContent!, /Preview/);
+    assert.equal(app.mutations.length, 0);
+    await app.refresh(); assert.equal(app.container.querySelectorAll(".toast-info").length, 2);
+    await app.click(app.button("Hide personal information"));
+    for (const toast of app.container.querySelectorAll(".toast-info")) {
+      assert.doesNotMatch(toast.outerHTML, /Private Reader|reader@example|Preview|Team|Another synthetic/);
+      assert.match(toast.textContent!, /1 new unread email/);
+    }
+    assert.equal(app.configured.at(-1)?.privacy, true);
+    await app.click(app.button("Open email", app.container.querySelector(".toast-info")!));
+    assert.ok(app.container.querySelector(".message"));
+    assert.deepEqual(app.mutations, [{ id: target.id, action: "read" }]);
+    await app.click(app.button("Open email", app.container.querySelector(".toast-info")!));
+    assert.match(app.container.querySelector(".toast-error")!.textContent!, /no longer available/);
+    assert.equal(app.mutations.length, 1, "missing target never falls back to another email");
+    await app.remount();
+    assert.equal(app.container.querySelector(".toast-info"), null, "reload does not repeat accepted arrivals");
+  } finally { await app.close(); }
+});
+
+test("native notification clicks wait for compose and busy work before marking only their exact target read", async () => {
+  const app = await mount(notificationDefaults, true, true);
+  try {
+    await app.key("c");
+    assert.equal(app.dialog().getAttribute("aria-label"), "New message");
+    await app.notificationClick("b:1:5");
+    assert.equal(app.mutations.length, 0);
+    assert.equal(app.dialog().getAttribute("aria-label"), "New message");
+    await app.click(app.button("Keep draft", app.dialog()));
+    assert.deepEqual(app.mutations, [{ id: "b:1:5", action: "read" }]);
+    const gate = app.holdAction();
+    await app.click(app.button("Archive", app.toolbar()));
+    await app.notificationClick("a:1:6");
+    assert.equal(app.mutations.some((entry) => entry.id === "a:1:6"), false);
+    await app.finish(gate);
+    assert.equal(app.mutations.filter((entry) => entry.id === "a:1:6" && entry.action === "read").length, 1);
+    assert.ok(app.container.querySelector(".message"));
+  } finally { await app.close(); }
+});
+
+test("mounted notification settings configure native details, chooser, preview, sound and reset", async () => {
+  const app = await mount(notificationDefaults, true, true);
+  try {
+    await app.click(app.button("Settings")); await app.click(app.button("Notifications"));
+    const settings = app.container.querySelector<HTMLElement>('[aria-label="Notification settings"]')!;
+    const switchNamed = (label: string) => [...settings.querySelectorAll("label")].find((item) => item.textContent === label)!.querySelector<HTMLInputElement>("input")!;
+    for (const label of ["Show sender", "Show subject", "Show email preview", "Click to open the email", "Desktop new mail"]) await app.click(switchNamed(label));
+    assert.equal(app.configured.at(-1)?.value.sender, true);
+    assert.equal(app.configured.at(-1)?.value.desktop, false);
+    assert.equal(app.configured.at(-1)?.value.openMail, false);
+    await app.click(app.button("Choose audio file", settings));
+    assert.equal(readNotifications().sound, "custom");
+    assert.match(settings.textContent!, /Custom audio selected/);
+    await app.click(app.button("Preview notification", settings));
+    assert.match(app.container.querySelector(".toast-info")!.textContent!, /Sample sender/);
+    assert.ok(app.audioCommands.includes("preview"));
+    await app.click(app.button("Remove audio", settings));
+    assert.equal(readNotifications().sound, "system");
+    await app.click(app.button("Off", settings));
+    assert.equal(app.configured.at(-1)?.value.sound, "off");
+    await app.click(app.button("Reset notification defaults", settings));
+    assert.deepEqual(readNotifications(), notificationDefaults);
+    assert.equal(app.audioCommands.at(-1), "remove");
+    assert.equal(settings.outerHTML.includes(".wav"), false, "chooser never exposes a file path");
+  } finally { await app.close(); }
+});
+
+test("delayed pruned snapshots keep removed details out of toasts and preserve surviving arrival IDs", async (t) => {
+  for (const removal of ["disconnect", "trash"] as const) await t.test(removal, async () => {
+    const app = await mount({ ...notificationDefaults, sender: true, subject: true, preview: true }, true, true);
+    try {
+      const removed = { ...app.state.messages[0], sender: "Removed sender", subject: "Removed subject", preview: "Removed preview" };
+      const survivor = { ...app.state.messages[2], sender: "Surviving sender" };
+      app.state.unreadArrivals = 2;
+      app.state.messages = app.state.messages.filter((mail) => removal === "disconnect" ? mail.accountId !== removed.accountId : mail.id !== removed.id);
+      if (removal === "disconnect") app.state.accounts = app.state.accounts.filter((account) => account.id !== removed.accountId);
+      // The service prunes removed records while retaining the cumulative count and surviving sequences.
+      app.state.mailArrivals = [{ sequence: 2, mail: survivor }];
+      await app.refresh();
+      const toasts = app.container.querySelectorAll<HTMLElement>(".toast-info");
+      assert.equal(toasts.length, 2);
+      assert.doesNotMatch([...toasts].map((toast) => toast.outerHTML).join(""), /Removed sender|Removed subject|Removed preview/);
+      const generic = [...toasts].find((toast) => toast.querySelector(".toast-text")?.textContent === "1 new unread email.")!;
+      assert.ok(generic);
+      assert.equal(generic.querySelector(".toast-open"), null, "count fallback has no stale target");
+      const exact = [...toasts].find((toast) => toast.textContent?.includes("Surviving sender"))!;
+      await app.click(app.button("Open email", exact));
+      assert.deepEqual(app.mutations, [{ id: survivor.id, action: "read" }]);
+      await app.notificationClick(removed.id);
+      assert.match(app.container.querySelector(".toast-error")!.textContent!, /no longer available/);
+      assert.deepEqual(app.mutations, [{ id: survivor.id, action: "read" }]);
+      await app.refresh();
+      assert.equal(app.container.querySelectorAll(".toast-info").length, 1, "surviving sequences are consumed once");
+    } finally { await app.close(); }
+  });
+});
+
+test("a previously delivered toast cannot open removed mail or its replacement", async () => {
+  const app = await mount({ ...notificationDefaults, subject: true }, true, true);
+  try {
+    const removed = app.state.messages[0];
+    app.state.unreadArrivals = 1;
+    app.state.mailArrivals = [{ sequence: 1, mail: removed }];
+    await app.refresh();
+    const toast = app.container.querySelector<HTMLElement>(".toast-info")!;
+    assert.match(toast.textContent!, /message 5/);
+    app.state.messages = app.state.messages.filter((mail) => mail.accountId !== removed.accountId);
+    app.state.accounts = app.state.accounts.filter((account) => account.id !== removed.accountId);
+    app.state.mailArrivals = [];
+    await app.click(app.button("Open email", toast));
+    assert.match(app.container.querySelector(".toast-error")!.textContent!, /no longer available/);
+    assert.equal(app.container.querySelector(".message"), null);
+    assert.deepEqual(app.mutations, []);
+  } finally { await app.close(); }
+});
+
+test("cancelling the audio chooser preserves Off and System with saved audio; importing selects Custom", async () => {
+  const app = await mount(notificationDefaults, true, true);
+  try {
+    await app.click(app.button("Settings")); await app.click(app.button("Notifications"));
+    const settings = app.container.querySelector<HTMLElement>('[aria-label="Notification settings"]')!;
+    await app.click(app.button("Choose audio file", settings));
+    assert.equal(readNotifications().sound, "custom");
+    for (const mode of ["off", "system"] as const) {
+      const choice = app.button(mode === "off" ? "Off" : "System default", settings);
+      await app.click(choice);
+      app.cancelAudio(true);
+      const configured = app.configured.length;
+      await app.click(app.button("Choose audio file", settings));
+      assert.equal(readNotifications().sound, mode);
+      assert.equal(choice.getAttribute("aria-checked"), "true");
+      assert.equal(app.configured.length, configured, "cancel does not reconfigure sound");
+      assert.ok(app.button("Remove audio", settings), "cancel preserves the saved audio");
+      app.cancelAudio(false);
+      await app.click(app.button("Choose audio file", settings));
+      assert.equal(readNotifications().sound, "custom");
+      assert.equal(app.button("Custom audio", settings).getAttribute("aria-checked"), "true");
+    }
+  } finally { await app.close(); }
 });

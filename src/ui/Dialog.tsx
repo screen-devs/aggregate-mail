@@ -5,10 +5,12 @@ export function Dialog({
   title,
   onClose,
   children,
+  className,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -16,8 +18,8 @@ export function Dialog({
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     (
-      ref.current?.querySelector<HTMLElement>("input, select, textarea") ||
-      ref.current?.querySelector<HTMLElement>("button")
+      ref.current?.querySelector<HTMLElement>("input:not(:disabled):not([data-private-field]), select:not(:disabled), textarea:not(:disabled):not([data-private-field])") ||
+      ref.current?.querySelector<HTMLElement>("button:not(:disabled)")
     )?.focus();
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -49,7 +51,7 @@ export function Dialog({
   return (
     <div className="dialog-backdrop">
       <div
-        className="dialog"
+        className={className ? `dialog ${className}` : "dialog"}
         role="dialog"
         aria-modal="true"
         aria-label={title}

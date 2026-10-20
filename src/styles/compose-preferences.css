@@ -6,7 +6,7 @@
   margin-bottom: 14px;
 }
 .compose-preference-controls label { flex: 1; }
-.compose-preference-controls .note { flex-basis: 100%; font-size: 12px; }
+.compose-preference-controls .note { flex-basis: 100%; font-size: calc(12px * var(--text-scale, 1)); }
 .private .compose-form :is(input, textarea):not(:focus) { filter: blur(5px); }
 .compose-settings :is(input, textarea, select) { min-width: 0; max-width: 100%; }
 .compose-settings .stacked :is(input, textarea) { width: 100%; }

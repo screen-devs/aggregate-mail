@@ -1,11 +1,13 @@
 import { useContext, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
 import type { Account, Mail } from "../../shared/types";
+import { previewText } from "../../shared/mail-content";
 import type { InteractionPreferences } from "../interaction";
 import { MailListWindow } from "../MailListWindow";
 import type { MailLocation } from "../navigation";
 import { collectPrivateNames, redactPrivateText } from "../privacy";
 import { MailPrivacy, PrivacyContext, Redact } from "../ui/Privacy";
-import { Pin, Trash } from "../ui/icons";
+import { Archive, Check, Clock, Inbox, Pin, Reply, Trash } from "../ui/icons";
+import { useMedia } from "../ui/useMedia";
 import { Avatar } from "./Avatar";
 import { relative, shortLabel } from "./format";
 
@@ -19,7 +21,7 @@ type RowLayout = "inline" | "stacked" | "brief" | "card";
  */
 export function MailList({
   messages, selectedId, density, narrow, sort, opening, accounts, disabled, listRef, focusSelection,
-  onOpen, onSelect, onMenu, onMenuKey, onTrash, trashUnavailable,
+  onOpen, onSelect, onMenu, onMenuKey, onTrack, onTrash, trashUnavailable, onRead, onReply, onArchive, onSnooze, onUnsnooze, reading = new Set(),
 }: {
   messages: Mail[];
   listRef: RefObject<HTMLElement | null>;
@@ -35,13 +37,21 @@ export function MailList({
   onSelect: (id: string) => void;
   onMenu: (event: MouseEvent<HTMLElement>, mail: Mail) => void;
   onMenuKey: (event: KeyboardEvent<HTMLElement>, mail: Mail) => void;
+  onTrack?: (mail: Mail) => void;
   onTrash: (mail: Mail) => void;
+  onRead?: (mail: Mail) => void;
+  onReply?: (mail: Mail) => void;
+  onArchive?: (mail: Mail) => void;
+  onSnooze?: (mail: Mail, event: React.MouseEvent<HTMLButtonElement>) => void;
+  onUnsnooze?: (mail: Mail) => void;
+  reading?: Set<string>;
   trashUnavailable: (mail: Mail) => string | undefined;
 }) {
+  const touchActions = useMedia("(hover: none)", false);
   const { on: privacy } = useContext(PrivacyContext);
   const provider = (mail: Mail) => accounts.find((account) => account.id === mail.accountId)?.provider;
   return <MailListWindow messages={messages} selectedId={selectedId} focusSelection={focusSelection}
-    density={density} sort={sort} listRef={listRef} narrow={narrow} touchActions={false}>{(m) => {
+    density={density} sort={sort} listRef={listRef} narrow={narrow} touchActions={touchActions}>{(m) => {
     const layout: RowLayout = narrow
       ? "card"
       : density === "compact" || m.relevance === 2
@@ -87,7 +97,7 @@ export function MailList({
                 </span>
                 <span className="row-subject"><Redact text={m.subject || "(no subject)"} /></span>
                 {density === "comfortable" && m.relevance > 1 && (
-                  <span className="row-preview"><Redact text={m.preview} /></span>
+                  <span className="row-preview"><Redact text={previewText(m.preview)} /></span>
                 )}
               </span>
             ) : (
@@ -97,11 +107,11 @@ export function MailList({
                     <strong><Redact text={m.sender} /></strong>
                     <span className="row-subject"><Redact text={m.subject} /></span>
                     {layout === "inline" && (
-                      <span className="row-preview"><Redact text={m.preview} /></span>
+                      <span className="row-preview"><Redact text={previewText(m.preview)} /></span>
                     )}
                   </span>
                   {layout === "stacked" && (
-                    <span className="row-preview"><Redact text={m.preview} /></span>
+                    <span className="row-preview"><Redact text={previewText(m.preview)} /></span>
                   )}
                 </span>
                 {reasonLabel}
@@ -109,6 +119,12 @@ export function MailList({
               </>
             )}
           </button>
+          <div className="row-actions" role="group" aria-label="Email row actions">
+          {onRead && <button type="button" aria-label={reading.has(m.id) ? "Marking as read…" : "Mark as read"} aria-busy={reading.has(m.id)} title={m.direction === "sent" ? "Sent messages have no inbox read action" : "Mark as read"} disabled={m.direction === "sent" || !m.unread || reading.has(m.id)} onClick={() => onRead(m)}><Check size={16} /></button>}
+          {onSnooze && <button type="button" aria-label={m.snoozedUntil && m.snoozedUntil > Date.now() ? "Return to inbox" : "Snooze"} title="Snooze or return to inbox" disabled={disabled || m.archived || m.direction === "sent"} onClick={(event) => m.snoozedUntil && m.snoozedUntil > Date.now() ? onUnsnooze?.(m) : onSnooze(m, event)}>{m.snoozedUntil && m.snoozedUntil > Date.now() ? <Inbox size={16} /> : <Clock size={16} />}</button>}
+          {onReply && <button type="button" aria-label="Reply" title="Reply" disabled={disabled} onClick={() => onReply(m)}><Reply size={16} /></button>}
+          {onArchive && <button type="button" aria-label="Archive" title="Archive" disabled={disabled || m.archived || m.direction === "sent"} onClick={() => onArchive(m)}><Archive size={16} /></button>}
+          {onTrack && <button type="button" aria-label="Track work" title="Track work" disabled={disabled} onClick={() => onTrack(m)}><Pin size={16} /></button>}
           <button type="button" className="row-trash trash-action"
             aria-label="Move to Trash"
             aria-description={unavailable}
@@ -117,6 +133,7 @@ export function MailList({
             onClick={() => onTrash(m)}>
             <Trash size={16} />
           </button>
+          </div>
         </div>
       </MailPrivacy>
     );

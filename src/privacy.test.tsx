@@ -128,3 +128,9 @@ test("long ordinary words do not trigger quadratic address matching", () => {
   assert.equal(redactPrivateText(text, ["Nora Lane"]), text);
   assert.ok(performance.now() - start < 1000, "scan non-address tokens once");
 });
+
+test("previews drop plain-text image placeholders but keep ordinary brackets", async () => {
+  const { previewText } = await import("../shared/mail-content");
+  assert.equal(previewText("[https://cdn.example.test/logo.png] We didn't process  your transfer [cid:img1]\n[Action required]"), "We didn't process your transfer [Action required]");
+  assert.equal(previewText("Transfer returned [https://www.example.test/content/da"), "Transfer returned");
+});

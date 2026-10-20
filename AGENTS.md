@@ -95,6 +95,15 @@ encrypted SQLite. The installed app needs no separate browser, terminal or Node.
 
 ## Completion
 
+- On shared Linux hosts, run every test and build through the bounded commands
+  in [CONTRIBUTING.md](CONTRIBUTING.md#bounded-local-verification). Use one job
+  at a time. A Node heap limit or test timeout alone is not containment.
+  If containment fails (exit 125), stop without an unbounded fallback.
+- For workflow changes, use [the journey map](docs/user-journeys.md) to choose
+  affected checks. Reuse passing evidence only when its source and inputs match.
+- Before claiming an installed fix, follow [the installed smoke recipe](docs/installed-smoke.md)
+  on the exact candidate. Record synthetic, installed and real-account proof
+  separately; leave unavailable checks unverified.
 - Run the checks for your change area in CONTRIBUTING.md. Never weaken a check
   or report a result you did not observe.
 - For a bug, reproduce first. After one diagnosed fix, if the check still

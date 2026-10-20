@@ -24,7 +24,7 @@ test("formatted renderer keeps headings, nested formatting, tables and validated
   assert.equal(document.querySelectorAll("br").length, 1);
   const td = document.querySelector("td")!;
   assert.equal(td.colSpan, 2);
-  assert.equal(td.style.fontSize, "24px");
+  assert.equal(td.style.fontSize, "calc(24px * var(--text-scale, 1))");
   assert.equal(td.style.textAlign, "center");
   assert.equal(td.style.color, "");
   const table = document.querySelector("table")!;
@@ -32,6 +32,7 @@ test("formatted renderer keeps headings, nested formatting, tables and validated
   assert.equal(table.cellPadding, "4");
   assert.equal(table.style.backgroundColor, "transparent");
   assert.equal(document.querySelector("td span")?.textContent, "Legacy");
+  assert.equal((document.querySelector("td span") as HTMLElement).style.fontSize, "calc(18px * var(--text-scale, 1))");
   assert.equal((document.querySelector(".formatted-mail") as HTMLElement).style.overflow, "auto");
 });
 
@@ -282,5 +283,5 @@ test("legacy alignment centers tables, center wraps blocks and quotes take the a
   assert.equal(quote.style.margin, "");
   assert.equal(quote.style.borderLeft, "");
   assert.equal(quote.style.paddingLeft, "");
-  assert.equal(quote.style.fontSize, "13px", "other sender styles stay");
+  assert.equal(quote.style.fontSize, "calc(13px * var(--text-scale, 1))", "sender sizes follow the app text size");
 });

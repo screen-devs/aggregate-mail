@@ -1,8 +1,10 @@
 import type { UpdateBridge } from "../shared/updates";
+import type { OpenCodeSetupResult } from "../shared/opencode";
 declare global {
   interface Window {
     desktop?: {
       platform: string;
+      notifications?: import("../shared/notifications").NotificationBridge;
       materials: boolean;
       setMaterial?: (material: "none" | "mica" | "acrylic") => void;
       setScheme?: (mode: "system" | "light" | "dark") => void;
@@ -14,6 +16,9 @@ declare global {
         position?: { x: number; y: number },
       ) => Promise<string | null>;
       credentialFallback?: "linux-local";
+      copyMcpEndpoint?: () => Promise<void>;
+      copyOpenCodeConfig?: (token: string) => Promise<void>;
+      setupOpenCode?: (token: string) => Promise<OpenCodeSetupResult>;
       updates?: UpdateBridge;
       onNavigation: (callback: (direction: "back" | "forward") => void) => () => void;
       onMailChanged: (callback: () => void) => () => void;

@@ -8,63 +8,32 @@
 .mail-window { position: relative; overflow-anchor: none; }
 .mail-window-row { position: absolute; left: 0; width: 100%; display: flow-root; }
 .mail-window-date { position: absolute; left: 0; width: 100%; pointer-events: none; }
-.mail-window-date .group { top: 0; margin: 0; height: var(--mail-group-height); }
+.mail-window-date .group { top: 0; margin: 0; height: calc(var(--mail-group-height) * var(--text-scale, 1)); }
 .row {
   position: relative;
   width: calc(100% - 12px);
   margin: 1px 6px;
   border-radius: var(--radius-control);
-  height: calc(var(--mail-row-medium) - 2px);
+  height: calc((var(--mail-row-medium) * var(--text-scale, 1)) - 2px);
   display: flex;
   align-items: center;
   padding: 0 12px;
-  font-size: 14px;
+  font-size: calc(14px * var(--text-scale, 1));
   transition: background-color 140ms var(--ease-out);
 }
 .mail-row:hover .row:not(.selected) {
   background: var(--hover);
 }
-.row-trash {
-  position: absolute;
-  top: 50%;
-  right: 16px;
-  transform: translateY(-50%);
-  width: 26px;
-  height: 26px;
-  justify-content: center;
-  border-radius: var(--radius-control);
-  visibility: hidden;
-  pointer-events: none;
-}
-.mail-row:hover .row-trash,
-.mail-row:focus-within .row-trash {
-  visibility: visible;
-  pointer-events: auto;
-}
-.mail-row:hover .row-trash:disabled,
-.mail-row:focus-within .row-trash:disabled {
-  opacity: 0.4;
-}
-.mail-row:hover .row time,
-.mail-row:focus-within .row time {
-  opacity: 0;
-}
-.compact .row-trash {
-  width: 24px;
-  height: 24px;
-}
+.row-actions { position: absolute; top: 50%; right: 16px; transform: translateY(-50%); display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); background: var(--raised); border-radius: var(--radius-control); box-shadow: var(--edge); visibility: hidden; pointer-events: none; }
+.row-actions button { width: 28px; padding: 0; height: 28px; justify-content: center; border-radius: var(--radius-control); }
+.mail-row:hover .row-actions, .mail-row:has(:focus-visible) .row-actions { visibility: visible; pointer-events: auto; }
+.row-actions button:disabled { opacity: 0.4; }
+.mail-row:hover .row time, .mail-row:focus-within .row time { opacity: 0; }
 @media (hover: none) {
-  .row-trash {
-    visibility: visible;
-    pointer-events: auto;
-  }
-  .row time {
-    margin-right: 36px;
-  }
-  .mail-row:hover .row time,
-  .mail-row:focus-within .row time {
-    opacity: 1;
-  }
+  .mail-row { flex-direction: column; align-items: stretch; }
+  .row-actions { margin: 2px 6px; position: static; transform: none; visibility: visible; pointer-events: auto; flex-wrap: wrap; flex-shrink: 0; }
+  .row-actions button { min-width: 32px; min-height: 32px; }
+  .mail-row:hover .row time, .mail-row:focus-within .row time { opacity: 1; }
 }
 /* Selection: an accent tint while the list has focus, a gray wash otherwise.
    Text keeps its own colors, so it reads with every accent and mode. */
@@ -132,7 +101,7 @@
   border-radius: 50%;
   background: var(--avatar);
   color: var(--avatar-text);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--text-scale, 1));
   font-weight: 600;
 }
 .avatar .provider-icon {
@@ -142,7 +111,7 @@
   width: 10px;
   height: 10px;
   border-radius: 3px;
-  font-size: 6.5px;
+  font-size: calc(6.5px * var(--text-scale, 1));
   box-shadow: 0 0 0 2px var(--surface);
 }
 .avatar .provider-icon:is(.gmail, .imap) {
@@ -169,7 +138,7 @@
   max-width: 34%;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   font-weight: 500;
 }
 .row-subject {
@@ -183,7 +152,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
 }
 .row-line .row-preview {
   flex: 1 1 0;
@@ -198,15 +167,15 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
-  color: var(--text-4);
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--reason);
 }
 .row time {
   flex-shrink: 0;
   min-width: 30px;
   margin-left: 10px;
   text-align: right;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-4);
   font-variant-numeric: tabular-nums;
 }
@@ -241,19 +210,19 @@
   color: var(--text);
 }
 .row.stacked {
-  height: calc(var(--mail-row-high) - 2px);
+  height: calc((var(--mail-row-high) * var(--text-scale, 1)) - 2px);
 }
 .stacked .row-text {
   gap: 2px;
 }
 .brief {
-  height: calc(var(--mail-row-low) - 2px);
+  height: calc((var(--mail-row-low) * var(--text-scale, 1)) - 2px);
 }
 .compact .row {
-  height: calc(var(--mail-row-compact) - 2px);
+  height: calc((var(--mail-row-compact) * var(--text-scale, 1)) - 2px);
   margin-top: 1px;
   margin-bottom: 1px;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
 }
 .brief .avatar,
 .compact .row .avatar {
@@ -263,7 +232,7 @@
 }
 .brief .avatar-letter,
 .compact .row .avatar-letter {
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale, 1));
 }
 .brief .avatar .provider-icon,
 .compact .row .avatar .provider-icon {
@@ -280,20 +249,20 @@
 /* Beside the reader the list is narrow, so each row is a card: sender and
    time, the subject, then a preview for medium and high relevance. */
 .row.card {
-  height: calc(var(--mail-row-card-low) - 2px);
+  height: calc((var(--mail-row-card-low) * var(--text-scale, 1)) - 2px);
   align-items: flex-start;
   padding: 9px 12px 10px;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
 }
-.row.card.r2 { height: calc(var(--mail-row-card-medium) - 2px); }
-.row.card.r3 { height: calc(var(--mail-row-card-high) - 2px); }
+.row.card.r2 { height: calc((var(--mail-row-card-medium) * var(--text-scale, 1)) - 2px); }
+.row.card.r3 { height: calc((var(--mail-row-card-high) * var(--text-scale, 1)) - 2px); }
 .card .avatar {
   width: 28px;
   height: 28px;
   margin: 1px 12px 0 0;
 }
 .card .avatar-letter {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
 }
 .card .row-text {
   gap: 1px;
@@ -317,7 +286,7 @@
   font-weight: 600;
 }
 .compact .row.card {
-  height: calc(var(--mail-row-card-compact) - 2px);
+  height: calc((var(--mail-row-card-compact) * var(--text-scale, 1)) - 2px);
   padding: 6px 12px;
 }
 .compact .row.card .avatar {
@@ -370,7 +339,7 @@
   cursor: default;
 }
 .filter-popover > span {
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale, 1));
   color: var(--text-3);
 }
 .filter-popover .dropdown-trigger {
@@ -384,7 +353,7 @@
   grid-column: 1 / -1;
   justify-self: start;
   margin-top: 4px;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale, 1));
 }
 .label-filter .dropdown-menu {
   max-height: 260px;
@@ -395,5 +364,10 @@
 }
 
 .row-pin { display: inline-flex; flex-shrink: 0; color: var(--accent); }
-.search-help { margin: 0; padding: 8px 18px; color: var(--text-3); font-size: 12px; }
+.search-help { margin: 0; padding: 8px 18px; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); }
 .search-help[role="alert"] { color: var(--danger); }
+
+.list-pane { container-type: inline-size; }
+.row-actions button:hover:not(:disabled) { background: var(--selected); }
+
+@media (hover: hover) { .list:has(.mail-row:hover) .mail-row:not(:hover) .row-actions { visibility: hidden; pointer-events: none; } }
