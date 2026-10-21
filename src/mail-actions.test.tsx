@@ -732,6 +732,7 @@ test("row provider restrictions and privacy survive sync and archived IMAP ident
 test("mounted touch rows reserve measured toolbar height through density changes", async () => {
   const app = await mount(undefined, false, false, true);
   try {
+    await app.open();
     const window = () => app.container.querySelector<HTMLElement>(".mail-window")!;
     const tops = () => [...window().querySelectorAll<HTMLElement>(".mail-window-row")].map((row) => Number.parseFloat(row.style.top));
     assert.deepEqual(tops(), [30, 150, 270], "80px card plus 40px measured touch strip");
