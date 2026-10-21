@@ -21,13 +21,13 @@ test("date-only deadlines retain their chosen day across timezones and legacy re
   } finally { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
 });
 
-test("calendar separates deadlines from local timed follow-ups and omits closed work", () => {
+test("calendar separates deadlines from local timed follow-ups, keeps undated open work on today and omits closed work", () => {
   const previous = process.env.TZ;
   try {
     process.env.TZ = "America/New_York";
-    const entries = calendarEntries([{ ...item, dueDate: "2026-10-16", followUpAt: Date.parse("2026-10-16T01:00:00Z") }, { ...item, id: "done", status: "done", dueDate: "2026-10-16" }, { ...item, id: "cancelled", status: "cancelled", followUpAt: 1 }, { ...item, id: "undated" }]);
-    assert.deepEqual(entries.map(({ day, kind }) => ({ day, kind })), [{ day: "2026-10-15", kind: "Follow-up" }, { day: "2026-10-16", kind: "Deadline" }]);
-    assert.equal(entries[0].at, Date.parse("2026-10-16T01:00:00Z"));
+    const entries = calendarEntries([{ ...item, dueDate: "2026-10-16", followUpAt: Date.parse("2026-10-16T01:00:00Z") }, { ...item, id: "done", status: "done", dueDate: "2026-10-16" }, { ...item, id: "cancelled", status: "cancelled", followUpAt: 1 }, { ...item, id: "undated" }], [], Date.parse("2026-10-14T16:00:00Z"));
+    assert.deepEqual(entries.map(({ day, kind, item }) => ({ day, kind, id: item.id })), [{ day: "2026-10-14", kind: "No deadline", id: "undated" }, { day: "2026-10-15", kind: "Follow-up", id: "c" }, { day: "2026-10-16", kind: "Deadline", id: "c" }]);
+    assert.equal(entries[1].at, Date.parse("2026-10-16T01:00:00Z"));
     assert.deepEqual(monthDays("2028-02"), { offset: 1, days: 29 });
     assert.deepEqual(monthDays("2027-02"), { offset: 0, days: 28 });
     assert.deepEqual(monthDays("2026-11"), { offset: 6, days: 30 });
@@ -38,8 +38,8 @@ test("calendar separates deadlines from local timed follow-ups and omits closed 
 test("snoozed mail follows the local return time and disappears on unsnooze, expiry or archive", () => {
   const now = new Date("2026-10-20T09:00").getTime();
   const mail = {id:"m",accountId:"a",subject:"Reply later",snoozedUntil:now+3600000,archived:false} as import("../shared/types").Mail;
-  const entries = calendarEntries([item], [mail], now);
-  assert.deepEqual(entries.map(({day,kind,at})=>({day,kind,at})), [{day:localDate(new Date(now)),kind:"Snoozed",at:now+3600000}]);
+  const entries = calendarEntries([{...item,dueDate:"2026-12-01"}], [mail], now);
+  assert.deepEqual(entries.filter((entry)=>entry.kind==="Snoozed").map(({day,kind,at})=>({day,kind,at})), [{day:localDate(new Date(now)),kind:"Snoozed",at:now+3600000}]);
   const later=now+86400000;
   assert.equal(calendarEntries([], [{...mail,snoozedUntil:later}], now)[0].at,later);
   for(const changed of [{...mail,snoozedUntil:null},{...mail,snoozedUntil:now},{...mail,archived:true},{...mail,direction:"sent" as const}]) assert.deepEqual(calendarEntries([], [changed], now),[]);

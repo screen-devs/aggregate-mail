@@ -17,7 +17,7 @@
 .stored.none {
   color: var(--text-4);
 }
-/* Settings: a 680px column of grouped controls on rounded working surfaces. */
+/* Settings: a compact column beside the section rail. */
 .settings {
   flex: 1;
   min-height: 0;
@@ -25,13 +25,13 @@
   display: grid;
   grid-template-columns: 176px minmax(0, 1fr);
   align-content: start;
-  gap: 24px;
-  padding: 24px;
+  gap: 20px;
+  padding: 16px 20px;
 }
 .settings-column {
-  max-width: 760px;
+  max-width: 600px;
   min-width: 0;
-  padding: 0 8px 40px 0;
+  padding: 0 0 24px;
 }
 /* Grouped rows in rounded panels, the way macOS settings stack them. */
 .settings-column > section {
@@ -44,10 +44,10 @@
   display: flex;
   align-items: baseline;
   gap: 10px;
-  margin-bottom: 8px;
-  font-size: calc(20px * var(--text-scale, 1));
+  margin-bottom: 6px;
+  font-size: calc(16px * var(--text-scale, 1));
   font-weight: 600;
-  line-height: 26px;
+  line-height: 22px;
 }
 .settings h1 span {
   font-size: calc(12px * var(--text-scale, 1));
@@ -55,7 +55,7 @@
   color: var(--text-4);
 }
 .settings h2 {
-  margin: 24px 2px 8px;
+  margin: 16px 0 6px;
   font-size: calc(13px * var(--text-scale, 1));
   font-weight: 600;
   color: var(--text);
@@ -110,12 +110,12 @@
   margin-top: 16px;
 }
 .account-row {
-  min-height: 52px;
-  padding: 12px 0;
+  min-height: 44px;
+  padding: 6px 0;
   flex-wrap: wrap;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   border-bottom: 1px solid var(--line);
 }
 .account-row .provider-icon {
@@ -149,7 +149,7 @@
   color: var(--danger);
 }
 .provider-row {
-  height: 52px;
+  min-height: 44px;
   display: flex;
   align-items: center;
 }
@@ -205,11 +205,11 @@
   color: var(--text);
 }
 .rule-row {
-  min-height: 64px;
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 10px 0;
+  gap: 16px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--line);
 }
 .note + .rule-row {
@@ -455,20 +455,21 @@
 .settings-navigation button svg { flex-shrink: 0; }
 .settings-navigation [aria-current="page"] { background: var(--selected); color: var(--link); font-weight: 600; }
 .settings-navigation button:hover { background: var(--hover); }
-.settings-section-heading { padding-bottom: 20px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.settings-section-heading { padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
 .settings-section-heading p { max-width: 55ch; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); line-height: 1.6; }
 .settings-agent-link { width: 100%; justify-content: space-between; padding: 16px; margin-bottom: 24px; height: auto; border-color: var(--line-2); background: var(--hover); white-space: normal; }
 .settings-agent-link strong { display: block; color: var(--link); font-size: calc(13px * var(--text-scale, 1)); }
 .settings-agent-link small { display: block; margin-top: 4px; color: var(--text-2); font-size: calc(12px * var(--text-scale, 1)); font-weight: 400; }
 .settings .settings-group { background: transparent; border: 0; border-radius: 0; overflow: visible; }
 .settings .settings-group > * { margin-left: 0; margin-right: 0; }
-.settings .settings-row { padding: 14px 0; }
-.settings .settings-row.stacked { padding: 16px 0 20px; gap: 12px; }
-.settings .segmented { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; border: 0; max-width: 100%; }
-.settings .segmented button { min-width: 0; flex: 1 1 auto; height: auto; min-height: 34px; padding: 7px 12px; border: 1px solid var(--line-2); overflow-wrap: anywhere; }
+.settings .settings-row { padding: 6px 0; }
+.settings .settings-row.stacked { padding: 8px 0; gap: 6px; }
+.settings .segmented { display: flex; flex-wrap: wrap; gap: 4px; padding: 0; border: 0; width: fit-content; max-width: 100%; }
+.settings .segmented button { min-width: 0; flex: 0 1 auto; height: auto; min-height: 30px; padding: 5px 10px; border: 1px solid var(--line-2); white-space: normal; overflow-wrap: anywhere; }
 .settings .segmented button.active { border-color: var(--accent); color: var(--link); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); box-shadow: inset 0 0 0 .5px var(--accent); }
-.settings-provider-choice { display: grid; gap: 12px; }
-.settings .reading-layouts .segmented button { display: flex; flex-direction: column; gap: 10px; align-items: center; padding: 14px; }
+.settings-provider-choice { display: grid; gap: 6px; }
+.settings .settings-form { gap: 12px; margin-top: 12px; }
+.settings .reading-layouts .segmented button { display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 8px 10px; }
 .reading-layouts button::before { content: ""; width: 66px; height: 36px; border: 1px solid currentColor; border-radius: 4px; background: linear-gradient(to right, currentColor 0 32%, transparent 32% 36%, color-mix(in srgb, currentColor 18%, transparent) 36%); opacity: .5; }
 .reading-layouts button:nth-child(2)::before { background: color-mix(in srgb, currentColor 18%, transparent); }
 .settings .theme-choices { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
@@ -476,8 +477,19 @@
 .settings .theme-choices button.active { border-color: var(--accent); color: var(--link); }
 .settings .theme-preview { height: 46px; }
 .settings .account-row strong { flex: 1 1 110px; }
+.settings-section-heading + section > h2:first-child,
+.compose-settings > h2:first-child { margin-top: 0; }
+.settings .compose-settings-actions { gap: 8px; }
+.compose-settings-actions .note { margin: 0 auto 0 0; }
+.compose-settings-account { min-width: 0; overflow-wrap: anywhere; font-weight: 500; text-align: right; }
+.settings .compose-settings-save { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.settings-facts { margin: 0; }
+.settings-facts > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; gap: 12px; min-height: 40px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.settings-facts dt { font-weight: 500; }
+.settings-facts dd { margin: 0; color: var(--text-3); line-height: 1.5; overflow-wrap: anywhere; }
+.settings-logos .note { margin: 0 0 10px; }
 @container (max-width: 680px) {
-  .settings { grid-template-columns: minmax(0, 1fr); padding: 18px 16px; gap: 22px; }
+  .settings { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 16px; }
   .settings-navigation { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 0 16px; border-right: 0; border-bottom: 1px solid var(--line); }
   .settings-column { padding: 0 0 32px; }
 }

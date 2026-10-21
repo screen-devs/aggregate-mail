@@ -158,7 +158,18 @@ unverified.
 [The local experiment](confirmed-work-experiment.md) opens on Today.
 Commitments are explicit user records, independent of read flags, replies and
 archive state. Each deliverable has its own status, source and evidence history.
-Projects combine selected sources only after approval of their account set.
+Projects collect tasks, emails and decisions for a job. Compact navigation shows
+each project name once, followed by tasks, emails and decisions.
+Email rows show sender, subject, account, direction and date; the reader holds
+the full content.
+Selecting a row opens the existing reader inside Projects. Add task prefills
+the project and a cached source. Saving new work returns to the list and closes
+any previously opened email so its actions cannot target the wrong source.
+Edit project / add emails changes the linked
+sources; combining accounts still requires approval of their exact set.
+Decisions and supporting emails stay behind an optional disclosure.
+Project switching stays disabled while a save is pending or unresolved, keeping
+failed decision text and supporting-email selections until recovery is reviewed.
 
 `shared/workspace.ts` defines the records; `server/workspace.ts` validates and
 stores them through the encrypted record store. `src/work/Workbench.tsx` owns
@@ -175,15 +186,20 @@ A patch can change either deadline field, never both at once. Follow-up changes
 use the same optimistic revision check and do not alter the deadline or status.
 Omitted evidence fields preserve existing links during partial updates.
 `src/work/Calendar.tsx` renders month and agenda views from open commitments in
-the selected account scope, with overdue and undated lists. Today updates its
+the selected account scope, with an overdue list. Open work without a deadline or
+follow-up appears on today's date as "No deadline" until it is scheduled or
+closed. Today keeps the selected work and its email in the right pane whenever
+the window is at least 980 px wide, regardless of the mail reading-pane setting.
+Today updates its
 in-app follow-up notice once per minute. There is no background reminder service
 or external calendar integration. [ADR 0043](adr/0043-built-in-follow-up-calendar.md)
 records these limits.
 
-Today source and conversation links reuse App's existing opened-message state
-and Reader while retaining Today, account scope and mail filters. Explicit
+Today and Projects source and conversation links reuse App's opened-message state
+and Reader while retaining the work screen, account scope and mail filters. Explicit
 opening still marks mail read. The work list stays mounted across reading and
-close; the summary, sources and history share the reader column. Source removal
+close. A compact task bar sits above the email; its reason, sources and history
+are collapsed under Details. Source removal
 shows an unavailable state. `src/work/QuickTrack.tsx` creates or patches one
 explicit item, with a shared mutation lock and captured revision. Quick patches
 omit deadline, project and evidence fields. Unknown saves require refresh and
@@ -845,7 +861,9 @@ persisted plaintext index, fuzzy matching or remote mailbox search.
 
 `src/dialogs/CommandPalette.tsx` consumes existing action callbacks from App. The modal uses the shared Dialog focus trap; the underlying frame is inert. The updater closes the palette before installation. The fixed Command/Control+K binding and list Up/Down behavior leave saved j/k preferences intact.
 
-`shared/mail-features.ts` defines compose preferences. Authenticated `GET/PUT /api/compose-preferences` reads/writes one encrypted `compose` record. PUT validates bounded templates, unique IDs and signatures for connected account IDs. `GET /api/state` includes the preferences; unchanged values keep renderer identity stable. Account deletion removes its saved signature. This adds a record kind without changing the mail key, database schema or encryption format.
+`shared/mail-features.ts` defines compose preferences. Authenticated `GET/PUT /api/compose-preferences` reads/writes one encrypted `compose` record. PUT validates bounded templates, unique IDs and signatures for connected account IDs. `GET /api/state` includes the preferences; unchanged values keep renderer identity stable. Account deletion removes its saved signature. A successful account reload also removes disconnected-account signatures from retained Settings edits, preserving templates and connected-account signatures. This adds a record kind without changing the mail key, database schema or encryption format.
+
+App owns the compose-preference save lock and pending state. Leaving or reopening Settings cannot start a second save while the first is pending. Success updates the saved baseline; failure keeps the editable draft and reports the error even after navigation. Mounted deferred-response regressions in `src/navigation.test.tsx` cover both outcomes and the next save.
 
 `pin` and `unpin` message actions run through the existing mail queue and never call a provider mutation. Pins live in the encrypted mail record, survive provider refresh, and clear with the cached mail. They do not reorder results or change Inbox categories.
 
@@ -1163,12 +1181,28 @@ See [ADR 0049](adr/0049-v2-visual-completion.md) for the V2 visual correction.
 
 Assistant setup is under Settings, AI and agents. The sidebar Agent review view
 contains proposals and activity. Access and approval checks are unchanged.
+Edit access on an assistant card changes its accounts and tools in place
+(`PATCH /api/agent/grants/:id`); the credential is kept. MCP re-reads the grant
+on every call, and approval rechecks pending proposals against the current grant.
 Back/Forward share the persistent search toolbar. Sender context defaults closed.
 
 Drafts is a full list with account filtering and plain-text search over sender,
 recipients, account, subject and a 200-character body preview. Complete content is
 retrieved only when a draft opens. Summaries include attachment counts, not file
 contents. Privacy masks draft details; uncertain-send warnings stay visible.
+An initial load failure reports an unavailable count; retained rows are labeled
+cached rather than implying that saved drafts disappeared.
+
+Mail lists fill the working area until a message opens. Row actions appear over
+the row's trailing edge on hover or keyboard focus and reserve no width. The reader omits confirmed-empty attachments and image controls;
+unknown metadata and load failures retain recovery controls. Conversation evidence
+is a disclosure. Single-item quick tracking shows the deliverable once, with an
+explicit action to add another.
+
+Settings resets its scroll container on section/history changes. App retains
+unsaved compose preferences across sections and Settings close for the current
+session. Save failures retain those edits; a successful save clears only the
+submitted draft. Closing the application still discards unsaved Settings edits.
 
 Snooze uses an anchored menu. Calendar combines confirmed deadlines and follow-ups
 with active cached-email snoozes in local time. No duplicate event is persisted.

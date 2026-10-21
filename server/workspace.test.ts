@@ -198,6 +198,22 @@ test("workspace HTTP preserves confirmed obligations, account boundaries and imm
       assert.equal((await request(`/agent/proposals/${routing.id}/approve`, "POST", { digest: routing.digest })).status, 409);
       assert.equal(sends, 0); store.put("mail", mail.id, original);
     });
+    await t.test("assistant access edits keep the credential and apply to the next tool call", async () => {
+      const agent = await grant(["read_email", "reply_to_email"]);
+      const edited = await (await request(`/agent/grants/${agent.id}`, "PATCH", { tools: ["read_email", "read_email"], name: "Renamed" })).json();
+      assert.equal(edited.token, agent.token); assert.deepEqual(edited.tools, ["read_email"]); assert.equal(edited.name, "Renamed"); assert.deepEqual(edited.accountIds, ["a"]);
+      const denied = await (await fetch(`${origin}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", Authorization: `Bearer ${agent.token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "reply_to_email", arguments: { id: mail.id, body: "Removed permission" } } }) })).json();
+      assert.equal(denied.result.isError, true);
+      assert.equal((await tool(agent.token, "read_email", { id: mail.id })).id, mail.id);
+      const proposal = await tool((await grant(["reply_to_email"])).token, "reply_to_email", { id: mail.id, body: "Pending before removal" });
+      await request(`/agent/grants/${proposal.agentId}`, "PATCH", { tools: ["read_email"] });
+      assert.equal((await request(`/agent/proposals/${proposal.id}/approve`, "POST", { digest: proposal.digest })).status, 403);
+      for (const body of [{ tools: [] }, { accountIds: [] }, { tools: ["send_anything"] }, { token: "replaced" }])
+        assert.equal((await request(`/agent/grants/${agent.id}`, "PATCH", body)).status, 400);
+      assert.notEqual((await request(`/agent/grants/${agent.id}`, "PATCH", { accountIds: ["missing"] })).status, 200);
+      assert.equal((await request("/agent/grants/missing", "PATCH", { tools: ["read_email"] })).status, 404);
+      assert.equal(store.get("agent", agent.id)?.token, agent.token); assert.deepEqual(store.get("agent", agent.id)?.accountIds, ["a"]);
+    });
     await t.test("grant revoked while approved mutation is queued prevents the provider action", async () => {
       const agent = await grant(); const actions: string[] = [];
       let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });

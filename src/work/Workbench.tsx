@@ -10,6 +10,7 @@ import { collectPrivateNames } from "../privacy";
 import { compileMailSearch } from "../mail-search";
 import { Segmented } from "../ui/Segmented";
 import { Dialog } from "../ui/Dialog";
+import { ArrowLeft } from "../ui/icons";
 import { Calendar } from "./Calendar";
 import { AgentProvider } from "./AgentProvider";
 import type { WorkspaceState } from "./useWorkspace";
@@ -18,11 +19,11 @@ import { openCodeConfig, openCodeConfigPreview, type OpenCodeSetupResult } from 
 
 const statusNames: Record<CommitmentStatus, string> = { "needs-reply": "Needs reply", "needs-work": "Needs work", waiting: "Waiting", done: "Completed", cancelled: "Cancelled" };
 const tools: AgentTool[] = ["list_accounts", "list_emails", "search_emails", "read_email", "get_thread", "propose_draft", "reply_to_email", "archive_email", "mark_read", "list_projects", "list_commitments", "create_project", "track_commitment"];
-const toolNames: Record<AgentTool, string> = { list_accounts: "List allowed accounts", list_emails: "List cached emails", search_emails: "Search cached emails", read_email: "Read a selected email", get_thread: "Read a conversation", propose_draft: "Propose a reply draft", reply_to_email: "Propose sending a reply", archive_email: "Propose archiving an email", mark_read: "Propose marking an email read", list_projects: "List single-account projects", list_commitments: "List single-account commitments", create_project: "Create projects immediately without review", track_commitment: "Track open commitments immediately without review" };
+const toolNames: Record<AgentTool, string> = { list_accounts: "List allowed accounts", list_emails: "List cached emails", search_emails: "Search cached emails", read_email: "Read a selected email", get_thread: "Read a conversation", propose_draft: "Propose a reply draft", reply_to_email: "Propose a reply (opens in Drafts)", archive_email: "Propose archiving an email", mark_read: "Propose marking an email read", list_projects: "List single-account projects", list_commitments: "List single-account commitments", create_project: "Create projects immediately without review", track_commitment: "Track open commitments immediately without review" };
 
-function Source({ id, state, onOpen }: { id: string; state: State; onOpen: (mail: Mail) => void }) {
+function Source({ id, state, onOpen }: { id: string; state: State; onOpen: (mail: Mail, trigger: HTMLButtonElement) => void }) {
   const mail = state.messages.find((item) => item.id === id && state.accounts.some((account) => account.id === item.accountId));
-  return mail ? <MailPrivacy mail={mail}><button type="button" className="link work-source" onClick={() => onOpen(mail)}><Redact text={mail.subject || "(no subject)"} /> · {mail.direction === "sent" ? "Sent" : "Received"}</button></MailPrivacy> : <span>Source unavailable in cache</span>;
+  return mail ? <MailPrivacy mail={mail}><button type="button" className="link work-source" onClick={(event) => onOpen(mail, event.currentTarget)}><Redact text={mail.subject || "(no subject)"} /> · {mail.direction === "sent" ? "Sent" : "Received"}</button></MailPrivacy> : <span>Source unavailable in cache</span>;
 }
 
 export function SourceSelect({ state, selected, onChange, multiple = false, accountFilter }: { state: State; selected: string[]; onChange: (ids: string[]) => void; multiple?: boolean; accountFilter: string }) {
@@ -58,7 +59,7 @@ function CommitmentForm({ existing, draft, state, projects, source, accountFilte
   const [dateError, setDateError] = useState("");
   const [sourceIds, setSources] = useState(existing ? [existing.sourceMailId] : source ? [source] : []);
   const [evidence, setEvidence] = useState(existing?.evidenceMailIds || (source ? [source] : []));
-  const [projectId, setProjectId] = useState(existing?.projectId || "");
+  const [projectId, setProjectId] = useState(existing?.projectId || draft?.projectId || "");
   const { on: privacy } = useContext(PrivacyContext);
   return <form className="settings-form work-form" onSubmit={async (event) => {
     event.preventDefault();
@@ -108,7 +109,6 @@ function ProjectForm({ existing, state, accountFilter, pending, onSave, onCancel
   const accounts = [...new Set(sources.map((id) => state.messages.find((mail) => mail.id === id)?.accountId).filter((id): id is string => !!id))];
   const { on: privacy } = useContext(PrivacyContext);
   return <form className="settings-form work-form" onSubmit={async (event) => { event.preventDefault(); if (accounts.length > 1 && !confirmed) return; await onSave({ name, sourceMailIds: sources, ...(existing ? { revision: existing.revision } : {}), confirmAccountIds: confirmed ? accounts : undefined }); }}>
-    <h2>{existing ? "Edit project" : "New project"}</h2>
     <p className="work-meta">Choose a name and at least one email. You can find more emails below.</p>
     <PrivateField label="Project name" value={name} onChange={setName} required maxLength={200} />
     <SourceSelect state={state} selected={sources} onChange={(ids) => { setSources(ids); setConfirmed(false); }} multiple accountFilter={accountFilter} />
@@ -159,8 +159,7 @@ function OpenCodeSetup({ token, enabled, api, onEnabled, onNotice }: {
       setCopied(true);
     } catch { setCopied(false); onNotice("OpenCode config could not be copied."); }
   };
-  return <details className="work-opencode">
-    <summary>Set up OpenCode</summary>
+  return <>
     <p className="work-meta">Connects OpenCode to this assistant and its selected permissions. Replaces the existing EMC² connection on this computer and saves the credential privately.</p>
     {save && <div className="form-actions">
       <button className="button" type="button" disabled={phase === "pending"} onClick={() => void setup()}>{enabled ? "Set up OpenCode" : "Enable MCP and set up OpenCode"}</button>
@@ -174,7 +173,7 @@ function OpenCodeSetup({ token, enabled, api, onEnabled, onNotice }: {
       <pre>{openCodeConfigPreview()}</pre>
       <button className="button" type="button" onClick={() => void copy()}>Copy OpenCode config</button>{copied && <span role="status"> Copied. Keep the credential private.</span>}
     </details>
-  </details>;
+  </>;
 }
 
 export function Workbench({ mode, state, api, work, accountFilter, initialSource, initialItem, initialDraft, onSourceConsumed, onOpen, onMailChanged, onNotice, onModalChange, reader, readerOpened = false, onCloseReader, fullReading = false, onManageAssistants, onOpenDraft }: {
@@ -188,24 +187,23 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
   const { workspace, error, loaded, pending, stale, now, blocked } = work;
   const acknowledged = useRef(false);
   const [editor, setEditor] = useState<Commitment | "new" | null>(initialItem || (initialSource ? "new" : null));
-  useEffect(() => { onModalChange?.(!!editor); return () => onModalChange?.(false); }, [!!editor, onModalChange]);
   const [draft, setDraft] = useState(initialDraft);
   const missingSelection = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const inspector = useRef<HTMLElement>(null);
   const selectedRow = useRef<HTMLButtonElement | null>(null);
-  const rows = useRef(new Map<string, HTMLButtonElement>());
   const wasReading = useRef(readerOpened);
   useEffect(() => {
-    if (wasReading.current && !readerOpened && mode === "actions") {
+    if (wasReading.current && !readerOpened && (mode === "actions" || mode === "projects")) {
       if (!missingSelection.current) { setDetailOpen(false); selectedRow.current?.focus({ preventScroll: true }); }
       missingSelection.current = false;
     }
     wasReading.current = readerOpened;
   }, [readerOpened, mode]);
-  useEffect(() => { if (selectedId && mode !== "actions") inspector.current?.focus(); }, [selectedId, mode]);
+  useEffect(() => { if (selectedId && mode === "calendar") inspector.current?.focus(); }, [selectedId, mode]);
   const [projectEditor, setProjectEditor] = useState<Project | "new" | null>(null);
+  useEffect(() => { onModalChange?.(!!editor || !!projectEditor); return () => onModalChange?.(false); }, [!!editor, !!projectEditor, onModalChange]);
   const [projectId, setProjectId] = useState("");
   const [decision, setDecision] = useState("");
   const [decisionSources, setDecisionSources] = useState<string[]>([]);
@@ -219,6 +217,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
   const [grantTools, setGrantTools] = useState<AgentTool[]>([]);
   const [mcpEnabled, setMcpEnabled] = useState(false);
   const [shownToken, setShownToken] = useState<string | undefined>();
+  const [editingGrant, setEditingGrant] = useState<string | null>(null);
   const privacyContext = useContext(PrivacyContext);
   const privacy = privacyContext.on;
   const privateNames = useMemo(() => [...new Set([...(privacyContext.names || []), ...state.messages.flatMap((mail) => collectPrivateNames(state.accounts, mail))])], [privacyContext.names, state.messages, state.accounts]);
@@ -254,38 +253,57 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
   const commitments = workspace.commitments.filter((item) => accountFilter === "all" || item.accountId === accountFilter);
   const selectedProject = projects.find((project) => project.id === projectId);
   const sorted = [...commitments].sort((a, b) => (deadlineDate(a) || "9999-12-31").localeCompare(deadlineDate(b) || "9999-12-31") || b.updatedAt - a.updatedAt);
-  const selected = commitments.find((item) => item.id === selectedId);
+  const selected = commitments.find((item) => item.id === selectedId && (mode !== "projects" || item.projectId === selectedProject?.id));
   const accountName = (item: Commitment) => { const index = state.accounts.findIndex((account) => account.id === item.accountId); return index < 0 ? "Account unavailable" : accountLabel(state.accounts[index], index, privacy); };
   const itemRow = (item: Commitment) => <article key={item.id} className={`work-item work-row${selectedId === item.id ? " selected" : ""}`}>
-    <button type="button" className="work-select" ref={(node) => { if (node) rows.current.set(item.id, node); else rows.current.delete(item.id); }} aria-pressed={selectedId === item.id} onClick={(event) => { selectedRow.current = event.currentTarget; setSelectedId(item.id); setDetailOpen(true); if (mode === "actions") { const mail = state.messages.find((mail) => mail.id === item.sourceMailId && mail.accountId === item.accountId && state.accounts.some((account) => account.id === mail.accountId)); if (mail) { missingSelection.current = false; onOpen(mail); } else { missingSelection.current = true; onCloseReader?.(); } } }}>
-      <strong><Redact text={item.text} /></strong><span><Redact text={item.reason} /></span>
-      <span className="work-meta"><Redact text={accountName(item)} /> · {deadlineDate(item) ? `Due ${deadlineDate(item)}` : "No deadline"}{item.followUpAt === undefined ? "" : ` · Follow up ${new Date(item.followUpAt).toLocaleString()}`}</span>
+    <button type="button" className="work-select" aria-pressed={selectedId === item.id} onClick={(event) => { selectedRow.current = event.currentTarget; setSelectedId(item.id); setDetailOpen(true); if (mode === "actions" || mode === "projects") { const mail = state.messages.find((mail) => mail.id === item.sourceMailId && mail.accountId === item.accountId && state.accounts.some((account) => account.id === mail.accountId)); if (mail) { missingSelection.current = false; onOpen(mail); } else { missingSelection.current = true; onCloseReader?.(); } } }}>
+      <strong><Redact text={item.text} /></strong>
+      <span className="work-meta">{mode === "projects" && `${statusNames[item.status]} · `}<Redact text={accountName(item)} />{deadlineDate(item) && ` · Due ${deadlineDate(item)}`}{item.followUpAt === undefined ? "" : ` · Remind ${new Date(item.followUpAt).toLocaleString()}`}</span>
     </button>
-    <Source id={item.sourceMailId} state={state} onOpen={(mail) => { selectedRow.current = rows.current.get(item.id) || null; setSelectedId(item.id); setDetailOpen(true); missingSelection.current = false; onOpen(mail); }} />
   </article>;
-  const detail = selected && detailOpen && <section className={mode === "actions" ? "work-summary" : "work-inspector"} aria-label="Commitment details" ref={inspector} tabIndex={-1}>
-    <div className="work-toolbar"><span className="work-meta">{statusNames[selected.status]}</span><button type="button" onClick={() => { setDetailOpen(false); missingSelection.current = false; onCloseReader?.(); selectedRow.current?.focus({ preventScroll: true }); }}>Back to work list</button></div>
-    <h2><Redact text={selected.text} /></h2><p><Redact text={selected.reason} /></p>
+  const detailBody = selected && <>
+    <p><Redact text={selected.reason} /></p>
     <dl><dt>Account</dt><dd><Redact text={accountName(selected)} /></dd><dt>Deadline</dt><dd>{deadlineDate(selected) || "Not set"}</dd><dt>Follow up</dt><dd>{selected.followUpAt === undefined ? "Not set" : new Date(selected.followUpAt).toLocaleString()}</dd></dl>
-    <button className="button" type="button" disabled={blocked} onClick={() => setEditor(selected)}>Edit commitment</button>
     <h3>Source and evidence</h3>{[...new Set([selected.sourceMailId, ...selected.evidenceMailIds])].map((id) => <Source key={id} id={id} state={state} onOpen={onOpen} />)}
     <details><summary>Change history ({selected.history.length})</summary>{selected.history.map((change, index) => <div className="work-item" key={index}><p>{new Date(change.at).toLocaleString()} · {statusNames[change.status]}</p><p><Redact text={change.text} /> · <Redact text={change.reason} /></p><p>Deadline: {deadlineDate(change) || "Not set"} · Follow up: {change.followUpAt === undefined ? "Not set" : new Date(change.followUpAt).toLocaleString()}</p>{change.evidenceMailIds?.map((id) => <Source key={id} id={id} state={state} onOpen={onOpen} />)}</div>)}</details>
+  </>;
+  const detail = selected && detailOpen && <section className={mode === "calendar" ? "work-inspector" : "work-summary"} aria-label="Commitment details" ref={inspector} tabIndex={-1}>
+    <div className="work-summary-bar">
+      <button type="button" className="icon" aria-label="Back to work list" title="Back to work list" onClick={() => { setDetailOpen(false); missingSelection.current = false; onCloseReader?.(); selectedRow.current?.focus({ preventScroll: true }); }}><ArrowLeft size={15} /></button>
+      <span className="work-status">{statusNames[selected.status]}</span>
+      <strong><Redact text={selected.text} /></strong>
+      <button type="button" disabled={blocked} onClick={() => setEditor(selected)}>Edit task</button>
+    </div>
+    {mode === "calendar" ? detailBody : <details key={selected.id} className="work-task-details"><summary>Details{deadlineDate(selected) && ` · Due ${deadlineDate(selected)}`}{selected.followUpAt !== undefined && ` · Remind ${new Date(selected.followUpAt).toLocaleString()}`}</summary>{detailBody}</details>}
   </section>;
   const dueFollowUps = sorted.filter((item) => openCommitment(item) && item.followUpAt !== undefined && item.followUpAt <= now);
-  return <PrivacyContext.Provider value={{ ...privacyContext, names: privateNames }}><div className={`work-content work-${mode}${mode === "actions" ? " today-content" : ""}`}>
-    <div className="work-toolbar"><p className="work-intro">{mode === "agents" ? "Review changes before they run." : mode === "assistants" ? "Set up access for each assistant." : mode === "calendar" ? "Follow-ups, deadlines and snoozed mail" : "Work you chose to track"}</p><button type="button" disabled={pending || work.refreshing} aria-label="Refresh workspace" onClick={() => void load()}>Refresh</button>{mode === "agents" && onManageAssistants && <button type="button" onClick={onManageAssistants}>Manage assistants</button>}</div>
+  const openCount = sorted.filter(openCommitment).length;
+  const closeProjectReader = () => {
+    setSelectedId(null); setDetailOpen(false); missingSelection.current = false;
+    selectedRow.current = null; onCloseReader?.();
+  };
+  return <PrivacyContext.Provider value={{ ...privacyContext, names: privateNames }}><div className={`work-content work-${mode}${mode === "actions" || mode === "projects" ? " today-content" : ""}`}>
+    <div className="work-toolbar">
+      {mode === "projects" ? <div className="project-filters" role="group" aria-label="Choose a project">{projects.map((project, index) =>
+        <button type="button" key={project.id} disabled={blocked} aria-pressed={projectId === project.id} onClick={() => { setProjectId(project.id); closeProjectReader(); setDecision(""); setDecisionSources([]); }}><Redact text={privacy ? `Project ${index + 1}` : project.name} /></button>
+      )}</div> : <p className="work-intro">{mode === "agents" ? "Review changes before they run." : mode === "assistants" ? "Set up access for each assistant." : mode === "calendar" ? "Follow-ups, deadlines and snoozed mail" : `${openCount} ${stale ? "cached " : ""}open ${openCount === 1 ? "task" : "tasks"}`}</p>}
+      <div className="work-controls"><button type="button" disabled={pending || work.refreshing} aria-label="Refresh workspace" onClick={() => void load()}>Refresh</button>{mode === "actions" && <button className="button" type="button" disabled={blocked} onClick={() => setEditor("new")}>Add task</button>}{mode === "projects" && <>
+        <button type="button" disabled={blocked} onClick={() => setProjectEditor("new")}>New project</button>
+        {selectedProject && <><button type="button" disabled={blocked} onClick={() => setProjectEditor(selectedProject)}>Edit project / add emails</button><button className="button" type="button" disabled={blocked} onClick={() => { setDraft({ projectId: selectedProject.id }); setEditor("new"); }}>Add task</button></>}
+      </>}{mode === "agents" && onManageAssistants && <button type="button" onClick={onManageAssistants}>Manage assistants</button>}</div>
+    </div>
     {error && !editor && <p role="alert">{error}</p>}
     {(mode === "agents" || mode === "assistants") && agentError && <p role="alert">{agentError}</p>}
     {!loaded && !error && <p role="status">Loading confirmed work…</p>}
     {stale && loaded && <p role="status">Cached work is shown. Editing is paused until a successful refresh.</p>}
     {work.reviewRequired && <div className="work-recovery" role="alert"><p>The previous change has an unknown outcome. Refresh and inspect saved work before continuing.</p><button type="button" disabled={stale || work.refreshing || pending} onClick={work.acknowledgeReview}>I reviewed saved work</button></div>}
-    {loaded && <fieldset className="work-editing" disabled={mode !== "actions" && (blocked || (mode === "agents" || mode === "assistants") && agentStale)}>
+    {loaded && <fieldset className="work-editing" disabled={mode !== "actions" && mode !== "calendar" && (blocked || (mode === "agents" || mode === "assistants") && agentStale)}>
       {(mode === "actions" || mode === "calendar") && <>
-        <div className="work-toolbar">{mode === "actions" && <p>{sorted.filter(openCommitment).length} {stale ? "cached " : ""}open commitments</p>}<button className="button" type="button" disabled={blocked} onClick={() => setEditor("new")}>Confirm a commitment</button></div>
+        {mode === "calendar" && <div className="work-toolbar"><button className="button" type="button" disabled={blocked} onClick={() => setEditor("new")}>Add task</button></div>}
         <div className={`work-layout${detailOpen || readerOpened ? " has-selection" : ""}${mode === "actions" ? " today-layout" : ""}${fullReading ? " full-reading" : ""}`}><div className="work-main">
           {mode === "calendar" ? <Calendar items={commitments} messages={state.messages.filter((mail) => (accountFilter === "all" || mail.accountId === accountFilter) && state.accounts.some((account) => account.id === mail.accountId))} onOpenMail={onOpen} now={now} onSelect={(id) => { setSelectedId(id); setDetailOpen(true); }} /> : <>
-            {!stale && dueFollowUps.length > 0 && <p className="work-follow-ups" role="status">{dueFollowUps.length} follow-up{dueFollowUps.length === 1 ? " is" : "s are"} due. Open an item to reschedule or clear its follow-up.</p>}
-            {(["needs-reply", "needs-work", "waiting"] as CommitmentStatus[]).map((status) => <section className="work-group" key={status}><h2>{statusNames[status]} <span>{sorted.filter((item) => item.status === status).length}</span></h2>{sorted.filter((item) => item.status === status).map(itemRow)}{!sorted.some((item) => item.status === status) && <p className="work-empty">Nothing here.</p>}</section>)}
+            {!stale && dueFollowUps.length > 0 && <p className="work-follow-ups" role="status">{dueFollowUps.length} reminder{dueFollowUps.length === 1 ? "" : "s"} due</p>}
+            {(["needs-reply", "needs-work", "waiting"] as CommitmentStatus[]).map((status) => <section className="work-group" key={status}><h2>{statusNames[status]} <span>{sorted.filter((item) => item.status === status).length}</span></h2>{sorted.filter((item) => item.status === status).map(itemRow)}</section>)}
             <details><summary>Completed and cancelled ({sorted.filter((item) => !openCommitment(item)).length})</summary>{sorted.filter((item) => !openCommitment(item)).map(itemRow)}</details>
           </>}
         </div>{mode === "actions" ? <aside className="today-reader" aria-label="Today reading pane">
@@ -294,23 +312,40 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
         </aside> : detail}</div>
       </>}
       {mode === "projects" && <>
-        <p>Group related emails and work in a project. Linking accounts requires your approval.</p>
-        <button className="button" type="button" onClick={() => setProjectEditor("new")}>New project</button>
-        {projectEditor && <ProjectForm key={projectEditor === "new" ? "new" : projectEditor.id} existing={projectEditor === "new" ? undefined : projectEditor} state={state} accountFilter={accountFilter} pending={pending} onCancel={() => setProjectEditor(null)} onSave={async (input) => { const ok = await mutate(() => api(projectEditor === "new" ? "/projects" : `/projects/${encodeURIComponent(projectEditor.id)}`, projectEditor === "new" ? "POST" : "PATCH", input)); if(ok) setProjectEditor(null); return ok; }} />}
-        <div className="project-filters" role="group" aria-label="Choose a project">{projects.map((project, index) => <button type="button" key={project.id} aria-pressed={projectId === project.id} onClick={() => setProjectId(project.id)}><Redact text={privacy ? `Project ${index + 1}` : project.name} /></button>)}{!projects.length && <p className="work-meta">Create a project to bring its conversations and work together.</p>}</div>
-        {selectedProject && <section><h2><Redact text={selectedProject.name} /></h2><p>{selectedProject.accountIds.length} account(s) · {selectedProject.crossAccountConfirmed ? "Cross-account link approved" : "Single-account project"}</p>
-          <button type="button" onClick={() => setProjectEditor(selectedProject)}>Edit project</button>
-          <h3>Linked conversations</h3>{selectedProject.sourceMailIds.map((id) => <Source key={id} id={id} state={state} onOpen={onOpen} />)}
-          <h3>Confirmed promises</h3>{commitments.filter((item) => item.projectId === selectedProject.id).map(itemRow)}
-          {detail}
-          <h3>Decisions</h3>{workspace.decisions.filter((item) => item.projectId === selectedProject.id).map((item) => <article className="work-item" key={item.id}><Redact text={item.text} />{item.sourceMailIds.map((id) => <Source key={id} id={id} state={state} onOpen={onOpen} />)}</article>)}
-          <form className="settings-form" onSubmit={async(event) => { event.preventDefault(); if(!decisionSources.length)return; if(await mutate(()=>api(`/projects/${encodeURIComponent(selectedProject.id)}/decisions`,"POST",{text:decision,sourceMailIds:decisionSources}))) {setDecision("");setDecisionSources([]);} }}>
-            <p className="work-meta">Record a decision you confirmed and link the emails that support it.</p>
-            <PrivateField label="Record a confirmed decision" value={decision} onChange={setDecision} multiline required />
-            <SourceSelect state={{...state,messages:state.messages.filter((mail)=>selectedProject.sourceMailIds.includes(mail.id))}} accountFilter="all" selected={decisionSources} onChange={setDecisionSources} multiple />
-            <button className="button" disabled={pending || !decisionSources.length}>Record decision</button>
-          </form>
-        </section>}
+        {selectedProject ? <>
+          <div className={`work-layout today-layout project-layout${detailOpen || readerOpened ? " has-selection" : ""}${fullReading ? " full-reading" : ""}`}>
+            <div className="work-main">
+              <section className="project-tasks"><h3>Tasks</h3>{sorted.filter((item) => item.projectId === selectedProject.id && openCommitment(item)).map(itemRow)}
+                {!commitments.some((item) => item.projectId === selectedProject.id && openCommitment(item)) && <p className="work-empty">No open tasks. Add one when an email needs action.</p>}
+                {commitments.some((item) => item.projectId === selectedProject.id && !openCommitment(item)) && <details><summary>Completed and cancelled</summary>{sorted.filter((item) => item.projectId === selectedProject.id && !openCommitment(item)).map(itemRow)}</details>}
+              </section>
+              <section className="project-emails"><h3>Emails <span>{selectedProject.sourceMailIds.length}</span></h3>
+                {selectedProject.sourceMailIds.map((id) => {
+                  const mail = state.messages.find((mail) => mail.id === id && (accountFilter === "all" || mail.accountId === accountFilter) && state.accounts.some((account) => account.id === mail.accountId));
+                  if (!mail) return <p className="work-empty" key={id}>Email unavailable in this account or cache.</p>;
+                  const accountIndex = state.accounts.findIndex((account) => account.id === mail.accountId);
+                  return <MailPrivacy key={id} mail={mail}><button type="button" className="project-mail" onClick={(event) => { selectedRow.current = event.currentTarget; setSelectedId(null); setDetailOpen(false); missingSelection.current = false; onOpen(mail); }}>
+                    <span className="project-mail-heading"><strong><Redact text={mail.direction === "sent" ? `To: ${mail.to}` : mail.sender} /></strong><time dateTime={new Date(mail.date).toISOString()}>{new Date(mail.date).toLocaleDateString()}</time></span>
+                    <span className="project-mail-subject"><Redact text={mail.subject || "(no subject)"} /></span>
+                    <small><Redact text={accountLabel(state.accounts[accountIndex], accountIndex, privacy)} /> · {mail.direction === "sent" ? "Sent" : "Received"}</small>
+                  </button></MailPrivacy>;
+                })}
+              </section>
+              <section className="project-decisions"><h3>Decisions</h3>
+                {workspace.decisions.filter((item) => item.projectId === selectedProject.id).map((item) => <article className="work-item" key={item.id}><Redact text={item.text} /><details><summary>Supporting emails</summary>{item.sourceMailIds.map((id) => <Source key={id} id={id} state={state} onOpen={(mail, trigger) => { selectedRow.current = trigger; setSelectedId(null); setDetailOpen(false); missingSelection.current = false; onOpen(mail); }} />)}</details></article>)}
+                {!workspace.decisions.some((item) => item.projectId === selectedProject.id) && <p className="work-empty">Keep a note of what was agreed.</p>}
+                <details key={selectedProject.id}><summary>Add a decision</summary><form className="settings-form" onSubmit={async(event) => { event.preventDefault(); if(!decisionSources.length)return; if(await mutate(()=>api(`/projects/${encodeURIComponent(selectedProject.id)}/decisions`,"POST",{text:decision,sourceMailIds:decisionSources}))) {setDecision("");setDecisionSources([]);} }}>
+                  <PrivateField label="What was agreed" value={decision} onChange={setDecision} multiline required />
+                  <SourceSelect state={{...state,messages:state.messages.filter((mail)=>selectedProject.sourceMailIds.includes(mail.id))}} accountFilter={accountFilter} selected={decisionSources} onChange={setDecisionSources} multiple />
+                  <button className="button" disabled={pending || !decisionSources.length}>Save decision</button>
+                </form></details>
+              </section>
+            </div>
+            <aside className="today-reader" aria-label="Project reading pane">{detail}
+              {readerOpened ? reader || <p role="status">Opened source unavailable in cache. <button type="button" onClick={onCloseReader}>Back to project</button></p> : selected && detailOpen ? <p role="status">Source unavailable in cache. Task details remain available.</p> : <p className="work-reader-empty">Select an email or task to read it here.</p>}
+            </aside>
+          </div>
+        </> : <p className="work-empty">{projects.length ? "Choose a project." : "No projects yet. Create one to link emails and tasks."}</p>}
       </>}
       {(mode === "agents" || mode === "assistants") && <>
         {mode === "agents" && <div className="agent-navigation"><span id={agentTabs} hidden>Agent sections</span><Segmented labelledBy={agentTabs} value={agentTab}
@@ -322,11 +357,21 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
           <div className="agent-card-head"><h3><Redact text={grant.name} /></h3><button type="button" className="trash-action" disabled={pending || agentStale} onClick={() => {
             if (confirm("Remove this assistant? This disables its access and removes its saved provider key. Action history stays. Pending proposals cannot run.")) void mutate(() => api(`/agent/grants/${encodeURIComponent(grant.id)}`, "DELETE"));
           }}>Remove assistant</button></div>
-          <p className="agent-accounts">Accounts: <Redact text={grant.accountIds.map((id) => { const i = state.accounts.findIndex((account) => account.id === id); return i < 0 ? "Removed account" : accountLabel(state.accounts[i], i, privacy); }).join(", ")} /></p>
-          <details className="agent-permissions"><summary>Permissions ({grant.tools.length})</summary><ul>{grant.tools.map((tool) => <li key={tool}>{toolNames[tool]}</li>)}</ul>
-          </details>
+          <div className="agent-access-summary"><p className="agent-accounts">Accounts: <Redact text={grant.accountIds.map((id) => { const i = state.accounts.findIndex((account) => account.id === id); return i < 0 ? "Removed account" : accountLabel(state.accounts[i], i, privacy); }).join(", ")} /></p>
+            <p className="agent-permission-summary">{[
+              grant.tools.some((tool) => ["list_accounts", "list_emails", "search_emails", "read_email", "get_thread", "list_projects", "list_commitments"].includes(tool)) && "Read cached data",
+              grant.tools.some((tool) => tool === "propose_draft" || tool === "reply_to_email") && "Reply drafts for review",
+              grant.tools.some((tool) => tool === "archive_email" || tool === "mark_read") && "Mail changes for review",
+              grant.tools.includes("create_project") && "Create projects without review",
+              grant.tools.includes("track_commitment") && "Track work without review",
+            ].filter(Boolean).join(" · ")}</p>
+          </div>
+          {editingGrant === grant.id ? <GrantEditor grant={grant} state={state} privacy={privacy} pending={pending || agentStale} onCancel={() => setEditingGrant(null)}
+            onSave={async (input) => { if (await mutate(() => api(`/agent/grants/${encodeURIComponent(grant.id)}`, "PATCH", input))) setEditingGrant(null); }} />
+          : <><details className="agent-permissions"><summary>Permissions ({grant.tools.length})</summary><ul>{grant.tools.map((tool) => <li key={tool}>{toolNames[tool]}</li>)}</ul>
+          </details><button type="button" disabled={pending || agentStale} onClick={() => setEditingGrant(grant.id)}>Edit access</button></>}
           <AgentProvider grant={grant} state={state} api={api} mcpEnabled={mcpEnabled} disabled={pending || stale} onPrepared={work.refreshFresh} />
-          <details className="agent-external"><summary>Connect OpenCode or another agent</summary>
+          <details className="agent-external work-opencode"><summary>Connect OpenCode or another agent</summary>
             <OpenCodeSetup token={grant.token} enabled={mcpEnabled} api={api} onEnabled={() => setMcpEnabled(true)} onNotice={onNotice} />
             <button type="button" onClick={() => setShownToken(shownToken === grant.id ? undefined : grant.id)}>{shownToken === grant.id ? "Hide credential" : "Reveal credential"}</button>
             {shownToken === grant.id && <input aria-label="Agent credential" type="password" readOnly value={grant.token} />}
@@ -368,18 +413,39 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
       </>}
       {mode !== "agents" && mode !== "assistants" && <details className="coverage"><summary>Sent and thread coverage · cached evidence may be incomplete</summary><p>Cached conversations are evidence, not a complete mailbox. Fetches are explicit and bounded. Coverage timestamps can become stale.</p>{state.accounts.filter((account)=>accountFilter==="all"||account.id===accountFilter).map((account,index)=>{const coverage=workspace.coverage.find((item)=>item.accountId===account.id);return <div key={account.id}><p><Redact text={accountLabel(account,index,privacy)} />: {coverage?`${coverage.count} Sent messages · checked ${new Date(coverage.observedAt).toLocaleString()} · limit ${coverage.bound}${coverage.truncated?" · more messages omitted":""}${coverage.error?" · last attempt failed":""}`:"Sent has not been checked"}</p><button type="button" disabled={blocked} onClick={()=>void mutate(async()=>{await api(`/accounts/${encodeURIComponent(account.id)}/sent/sync`,"POST",{bound:50});await onMailChanged();})}>Fetch up to 50 Sent messages</button></div>;})}</details>}
     </fieldset>}
-      {editor && <Dialog title={editor === "new" ? "Confirm a commitment" : "Edit commitment"} onClose={() => { if (!pending) { setEditor(null); setDraft(undefined); } }}>
+      {projectEditor && <Dialog title={projectEditor === "new" ? "New project" : "Edit project"} onClose={() => { if (!pending) setProjectEditor(null); }}>
+        {error && <p role="alert">{error}</p>}
+        {(stale || acknowledged.current || work.reviewRequired) && <button type="button" disabled={pending || work.refreshing} onClick={() => void load()}>Refresh saved work</button>}
+        {work.reviewRequired && <button type="button" disabled={stale || pending || work.refreshing} onClick={work.acknowledgeReview}>I reviewed saved work</button>}
+        <fieldset className="work-editing" disabled={blocked || acknowledged.current}><ProjectForm key={projectEditor === "new" ? "new" : projectEditor.id} existing={projectEditor === "new" ? undefined : projectEditor} state={state} accountFilter={accountFilter} pending={pending} onCancel={() => setProjectEditor(null)} onSave={async (input) => {
+          const ok = await mutate(async () => { const saved = await api<Project>(projectEditor === "new" ? "/projects" : `/projects/${encodeURIComponent(projectEditor.id)}`, projectEditor === "new" ? "POST" : "PATCH", input); if (saved.id !== projectId) closeProjectReader(); setProjectId(saved.id); });
+          if (ok) setProjectEditor(null); return ok;
+        }} /></fieldset>
+      </Dialog>}
+      {editor && <Dialog title={editor === "new" ? "Add task" : "Edit task"} onClose={() => { if (!pending) { setEditor(null); setDraft(undefined); } }}>
         {error && <p role="alert">{error}</p>}
         {(stale || work.reviewRequired || acknowledged.current) && <button type="button" disabled={pending || work.refreshing} onClick={() => void load()}>Refresh saved work</button>}
         {work.reviewRequired && <div className="work-recovery"><p>Review the refreshed saved work. The earlier save may already exist.</p><ul>{commitments.map((item) => <li key={item.id}><Redact text={item.text} /> · {statusNames[item.status]} · revision {item.revision}</li>)}</ul><button type="button" disabled={stale || work.refreshing || pending} onClick={work.acknowledgeReview}>I reviewed saved work</button></div>}
         {editor !== "new" && workspace.commitments.find((item) => item.id === editor.id)?.revision !== editor.revision && <p role="alert">This deliverable changed or was removed. Close this editor and review the current saved item before editing again. Your earlier input is retained here.</p>}
-        <fieldset disabled={blocked || acknowledged.current || editor !== "new" && workspace.commitments.find((item) => item.id === editor.id)?.revision !== editor.revision} className="work-editing"><CommitmentForm key={editor === "new" ? "new" : `${editor.id}:${editor.revision}`} existing={editor === "new" ? undefined : editor} draft={draft} state={state} projects={projects} source={source} accountFilter={accountFilter} pending={pending || work.refreshing} onCancel={() => { setEditor(null); setDraft(undefined); }} onSave={async (input) => {
+        <fieldset disabled={blocked || acknowledged.current || editor !== "new" && workspace.commitments.find((item) => item.id === editor.id)?.revision !== editor.revision} className="work-editing"><CommitmentForm key={editor === "new" ? "new" : `${editor.id}:${editor.revision}`} existing={editor === "new" ? undefined : editor} draft={draft} state={state} projects={projects} source={source || (mode === "projects" ? selectedProject?.sourceMailIds.find((id) => state.messages.some((mail) => mail.id === id && (accountFilter === "all" || mail.accountId === accountFilter))) : undefined)} accountFilter={accountFilter} pending={pending || work.refreshing} onCancel={() => { setEditor(null); setDraft(undefined); }} onSave={async (input) => {
           if (editor !== "new" && workspace.commitments.find((item) => item.id === editor.id)?.revision !== editor.revision) return false;
-          const ok = await mutate(async () => { const saved = await api<Commitment>(editor === "new" ? "/commitments" : `/commitments/${encodeURIComponent(editor.id)}`, editor === "new" ? "POST" : "PATCH", input); setSelectedId(saved.id); setDetailOpen(true); });
+          const ok = await mutate(async () => { const saved = await api<Commitment>(editor === "new" ? "/commitments" : `/commitments/${encodeURIComponent(editor.id)}`, editor === "new" ? "POST" : "PATCH", input); if (editor === "new" && (mode === "actions" || mode === "projects") || mode === "projects" && saved.projectId !== projectId) closeProjectReader(); else { setSelectedId(saved.id); setDetailOpen(true); } });
           if (ok) setEditor(null); return ok;
         }} /></fieldset>
       </Dialog>}
   </div></PrivacyContext.Provider>;
+}
+
+function GrantEditor({ grant, state, privacy, pending, onCancel, onSave }: { grant: AgentGrant; state: State; privacy: boolean; pending: boolean; onCancel: () => void; onSave: (input: { accountIds: string[]; tools: AgentTool[] }) => Promise<void> }) {
+  const [accounts, setAccounts] = useState(grant.accountIds.filter((id) => state.accounts.some((account) => account.id === id)));
+  const [granted, setGranted] = useState(grant.tools);
+  const toggle = <T,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+  return <form className="settings-form agent-edit" aria-label="Edit assistant access" onSubmit={(event) => { event.preventDefault(); void onSave({ accountIds: accounts, tools: tools.filter((tool) => granted.includes(tool)) }); }}>
+    <fieldset><legend>Allowed accounts</legend>{state.accounts.map((account, index) => <label key={account.id}><input type="checkbox" checked={accounts.includes(account.id)} onChange={() => setAccounts(toggle(accounts, account.id))} /><Redact text={accountLabel(account, index, privacy)} /></label>)}</fieldset>
+    <fieldset><legend>Permissions</legend>{tools.map((tool) => <label key={tool}><input type="checkbox" checked={granted.includes(tool)} onChange={() => setGranted(toggle(granted, tool))} />{toolNames[tool]}</label>)}</fieldset>
+    <p className="note">Changes apply to the assistant's next request. Pending proposals that lose access can no longer be approved.</p>
+    <div className="agent-edit-actions"><button className="button" disabled={pending || !accounts.length || !granted.length}>Save access</button><button type="button" onClick={onCancel}>Cancel</button></div>
+  </form>;
 }
 
 function Proposal({ permissionAvailable, proposal, state, pending, onOpen, onReview }: { permissionAvailable: boolean; proposal: AgentProposal; state: State; pending: boolean; onOpen: (mail: Mail)=>void; onReview:(approve:boolean)=>Promise<void> }) {
@@ -391,9 +457,11 @@ function Proposal({ permissionAvailable, proposal, state, pending, onOpen, onRev
   const stale = proposal.sourceChanged;
   const action = { send: "Reply (opens as draft)", draft: "Save reply draft", archive: "Archive email", read: "Mark email as read" }[proposal.action];
   const sources = [...new Set([...("mailId" in payload ? [payload.mailId] : []), ...(proposal.sourceMailId ? [proposal.sourceMailId] : [])])];
-  return <article className="work-item agent-proposal"><h3>{action}</h3><p>Status: {proposal.status}</p>
-    <p>From: <Redact text={account?.email||"Account unavailable"} /></p>
-    {"to" in payload?<><p>To: <Redact text={payload.to}/></p><p>Cc: <Redact text={(payload.cc||[]).join(", ")||"None"}/></p><p>Subject: <Redact text={payload.subject}/></p><pre><Redact text={payload.body}/></pre><p>Attachments: {(payload.attachments||[]).map((file,index)=><span key={index}><Redact text={file.filename}/> ({file.contentType}, {Math.floor(file.content.length*3/4)} bytes) </span>)}</p></>:null}
+  return <article className="work-item agent-proposal"><header className="proposal-header"><h3>{action}</h3><p>Status: {proposal.status}</p></header>
+    <dl className="proposal-envelope"><dt>From</dt><dd><Redact text={account?.email||"Account unavailable"} /></dd>
+      {"to" in payload && <><dt>To</dt><dd><Redact text={payload.to}/></dd>{!!payload.cc?.length && <><dt>Cc</dt><dd><Redact text={payload.cc.join(", ")}/></dd></>}<dt>Subject</dt><dd><Redact text={payload.subject}/></dd></>}
+    </dl>
+    {"to" in payload && <><pre><Redact text={payload.body}/></pre>{!!payload.attachments?.length && <p>Attachments: {payload.attachments.map((file,index)=><span key={index}><Redact text={file.filename}/> ({file.contentType}, {Math.floor(file.content.length*3/4)} bytes) </span>)}</p>}</>}
     {sources.map((id) => <Source key={id} id={id} state={state} onOpen={onOpen} />)}
     <details><summary>Review details</summary><p>Approval is checked against the current source and permission.</p><code>{proposal.digest}</code></details>
     {stale&&<p role="alert">Evidence changed since this proposal. Reject it and request a fresh proposal.</p>}

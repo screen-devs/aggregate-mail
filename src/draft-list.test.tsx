@@ -23,7 +23,7 @@ test("Drafts lists account, envelope, snippet and saved time; scopes search, ope
     return (url.startsWith("/accounts/a/") ? [{...draft,preview:"A saved proposal",attachmentCount:1}] : [{...draft,id:"two",accountId:"b",subject:"Unrelated"}]) as T;
   };
   const {createRoot}=await import("react-dom/client");const root=createRoot(document.getElementById("root")!);
-  const render=(filter="all",query="",privateText=false)=>act(async()=>root.render(<PrivacyContext.Provider value={{on:privateText,revealed:new Set(),toggle(){}}}><DraftList accounts={accounts} api={api} accountFilter={filter} query={query} active onOpen={value=>opened.push(value)}/></PrivacyContext.Provider>));
+  const render=(filter="all",query="",privateText=false,key="cached")=>act(async()=>root.render(<PrivacyContext.Provider value={{on:privateText,revealed:new Set(),toggle(){}}}><DraftList key={key} accounts={accounts} api={api} accountFilter={filter} query={query} active onOpen={value=>opened.push(value)}/></PrivacyContext.Provider>));
   try {
     await render(); assert.equal(document.querySelector('[role="dialog"]'),null);assert.equal(document.querySelectorAll('.draft-row').length,2);
     const text=document.body.textContent!;
@@ -36,5 +36,11 @@ test("Drafts lists account, envelope, snippet and saved time; scopes search, ope
     await act(async()=>{row.click();row.click();});assert.equal(requests.filter(url=>url.endsWith('/drafts/one')).length,1);assert.equal(opened.length,0);
     await act(async()=>release?.());assert.deepEqual(opened,[draft]);
     fail=true;await act(async()=>document.querySelector<HTMLButtonElement>('.draft-list-heading button')!.click());assert.match(document.querySelector('[role="alert"]')!.textContent!,/could not be loaded/);
+    assert.match(document.querySelector('.draft-list-heading')!.textContent!,/1 cached draft · Count unavailable/);
+    await render("all","",false,"fresh-failure");
+    assert.match(document.querySelector('.draft-list-heading')!.textContent!,/Draft count unavailable/);
+    assert.ok(!document.querySelector('.draft-list-heading')!.textContent!.includes('0 drafts'));
+    fail=false;await act(async()=>document.querySelector<HTMLButtonElement>('.draft-list-heading button')!.click());
+    assert.match(document.querySelector('.draft-list-heading')!.textContent!,/2 drafts · Saved on this device/);
   } finally { await act(async()=>root.unmount());dom.window.close();for(const[key,value]of previous)if(value)Object.defineProperty(globalThis,key,value);else Reflect.deleteProperty(globalThis,key); }
 });

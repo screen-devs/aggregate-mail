@@ -63,11 +63,33 @@ async function mount(native = false, setup?: (state: State, storage: Storage) =>
   const mutations: string[] = [];
   const renames: unknown[] = [];
   let renameFails = false;
+  let composePreferencesFail = false;
+  let composeSaveWait: Promise<void> | undefined;
+  let releaseComposeSave: (() => void) | undefined;
+  let composeSaveRequests = 0;
   let savedDraft: Draft | undefined;
   let readWait: Promise<void> | undefined;
   let releaseRead: (() => void) | undefined;
   globalThis.fetch = async (input, options) => {
     const url = String(input);
+    if (url === "/api/compose-preferences" && options?.method === "PUT") {
+      composeSaveRequests++;
+      await composeSaveWait;
+      if (composePreferencesFail) return { ok: false, json: async () => ({ error: "Synthetic save failure" }) } as Response;
+      const preferences = JSON.parse(String(options.body));
+      if (Object.keys(preferences.signatures).some(id => !state.accounts.some(account => account.id === id)))
+        return { ok: false, json: async () => ({ error: "Choose a connected account for each signature." }) } as Response;
+      state.composePreferences = preferences;
+      return { ok: true, json: async () => state.composePreferences } as Response;
+    }
+    if (url.startsWith("/api/accounts/") && options?.method === "DELETE") {
+      const id = decodeURIComponent(url.slice("/api/accounts/".length));
+      state.accounts = state.accounts.filter(account => account.id !== id);
+      state.messages = state.messages.filter(mail => mail.accountId !== id);
+      if (state.composePreferences) state.composePreferences = { ...state.composePreferences,
+        signatures: Object.fromEntries(Object.entries(state.composePreferences.signatures).filter(([accountId]) => accountId !== id)) };
+      return { ok: true, json: async () => ({}) } as Response;
+    }
     if (url.endsWith("/drafts") && !options?.method) return { ok: true, json: async () => [] } as unknown as Response;
     if (url.includes("/drafts") && ["POST", "PUT"].includes(options?.method || "")) {
       savedDraft = { ...JSON.parse(String(options?.body)), id: "synthetic-draft", accountId: url.split("/")[3],
@@ -154,6 +176,10 @@ async function mount(native = false, setup?: (state: State, storage: Storage) =>
   };
   return { state, storage: dom.window.localStorage, window: dom.window, container, button, click, choose, openFilters, account, activeAccount, accountButtons, back, forward, open, mouse, key, input, mutations,
     renames, failRename: (value: boolean) => { renameFails = value; },
+    failComposePreferences: (value: boolean) => { composePreferencesFail = value; },
+    composeSaveRequests: () => composeSaveRequests,
+    holdComposeSave: () => { composeSaveWait = new Promise<void>((resolve) => { releaseComposeSave = resolve; }); },
+    finishComposeSave: async () => { await act(async () => { releaseComposeSave?.(); await composeSaveWait; composeSaveWait = undefined; }); },
     title: () => container.querySelector(".message h1")?.textContent,
     native: async (direction: "back" | "forward") => { await act(async () => navigate?.(direction)); },
     refresh: async () => { await act(async () => changed?.()); },
@@ -949,7 +975,7 @@ test("Settings keeps mail navigation, uses a section rail and shows one section 
 test("side by side keeps the list beside the opened email; full width opens it in place", async () => {
   const split = await mount();
   try {
-    assert.ok(split.container.querySelector(".reader-pane .reader-empty"), "the reader waits for an email");
+    assert.equal(!!split.container.querySelector(".reader-pane"), false, "the closed list uses the available width");
     await split.open("a:1");
     assert.equal(split.title(), "Alpha");
     assert.ok(split.container.querySelector(".reader-pane .message"));
@@ -957,7 +983,7 @@ test("side by side keeps the list beside the opened email; full width opens it i
     assert.equal(split.container.querySelector(".reader-pane .mail-actions")?.getAttribute("aria-label"), "Opened email actions");
     await split.click(split.button("Close email"));
     assert.equal(split.title(), undefined);
-    assert.ok(split.container.querySelector(".reader-empty"));
+    assert.equal(!!split.container.querySelector(".reader-pane"), false, "closing restores the full list");
   } finally { await split.close(); }
   const full = await mount(false, (_state, storage) =>
     storage.setItem("emc2.appearance.v1", JSON.stringify({ reading: "full" })));
@@ -967,6 +993,85 @@ test("side by side keeps the list beside the opened email; full width opens it i
     assert.equal(full.title(), "Alpha");
     assert.equal(full.container.querySelector("[id='mail-a:2']"), null, "the email replaces the list");
   } finally { await full.close(); }
+});
+
+test("compose preferences survive Settings navigation, close and failed save", async () => {
+  const app = await mount();
+  try {
+    await app.click(app.button("Settings"));
+    await app.click(app.button("Templates and signatures"));
+    const signature = () => app.container.querySelector<HTMLTextAreaElement>(".compose-settings textarea")!;
+    await app.input(signature(), "A retained signature");
+    await app.click(app.button("Notifications"));
+    await app.click(app.button("Templates and signatures"));
+    assert.equal(signature().value, "A retained signature");
+    await app.click(app.button("Close settings"));
+    await app.click(app.button("Settings"));
+    await app.click(app.button("Templates and signatures"));
+    assert.equal(signature().value, "A retained signature");
+    app.failComposePreferences(true);
+    await act(async () => app.container.querySelector(".compose-settings")!.dispatchEvent(new app.window.Event("submit", { bubbles: true, cancelable: true })));
+    assert.equal(signature().value, "A retained signature");
+    assert.match(app.container.querySelector(".compose-settings [role=alert]")?.textContent || "", /edits are kept/);
+    app.failComposePreferences(false);
+    await act(async () => app.container.querySelector(".compose-settings")!.dispatchEvent(new app.window.Event("submit", { bubbles: true, cancelable: true })));
+    assert.equal(app.state.composePreferences?.signatures.a, "A retained signature");
+    await app.click(app.button("Notifications"));
+    await app.click(app.button("Templates and signatures"));
+    assert.equal(signature().value, "A retained signature");
+  } finally { await app.close(); }
+});
+
+for (const fails of [false, true]) test(`compose save stays locked across Settings navigation and ${fails ? "failure" : "success"}`, async () => {
+  const app = await mount();
+  try {
+    await app.click(app.button("Settings")); await app.click(app.button("Templates and signatures"));
+    const signature = () => app.container.querySelector<HTMLTextAreaElement>(".compose-settings textarea")!;
+    const save = () => app.container.querySelector<HTMLButtonElement>('.compose-settings button[type="submit"]')!;
+    await app.input(signature(), "First save");
+    app.holdComposeSave(); app.failComposePreferences(fails);
+    await app.click(save());
+    assert.equal(app.composeSaveRequests(), 1);
+    await app.click(app.button("Accounts")); await app.click(app.button("Templates and signatures"));
+    assert.equal(save().disabled, true, "pending save survives section remount");
+    await app.click(app.button("Close settings")); await app.click(app.button("Settings"));
+    await app.click(app.button("Templates and signatures"));
+    assert.equal(save().disabled, true, "pending save survives Settings close and reopen");
+    assert.equal(signature().value, "First save");
+    await act(async () => { app.container.querySelector(".compose-settings")!.dispatchEvent(new app.window.Event("submit", { bubbles: true, cancelable: true })); });
+    assert.equal(app.composeSaveRequests(), 1, "remounted form cannot start an overlapping request");
+    await app.finishComposeSave();
+    assert.equal(save().disabled, false, "settled save unlocks the remounted form");
+    assert.equal(signature().value, "First save", "success or failure preserves the submitted edits");
+    if (fails) assert.match(app.container.textContent || "", /Could not save templates and signatures. Your edits are kept/);
+    app.failComposePreferences(false);
+    await app.input(signature(), "Second save"); await app.click(save());
+    assert.equal(app.composeSaveRequests(), 2);
+    assert.equal(app.state.composePreferences?.signatures.a, "Second save");
+    await app.click(app.button("Accounts")); await app.click(app.button("Templates and signatures"));
+    assert.equal(signature().value, "Second save");
+  } finally { await app.finishComposeSave(); await app.close(); }
+});
+
+test("retained compose preferences stay savable after disconnecting an account", async () => {
+  const app = await mount(false, state => {
+    state.composePreferences = { templates: [{ id: "greeting", name: "Greeting", subject: "Hello", body: "Saved text" }], signatures: { a: "Removed account signature", b: "Keep this signature" } };
+  });
+  try {
+    await app.click(app.button("Settings")); await app.click(app.button("Templates and signatures"));
+    await app.click(app.button("Greeting"));
+    const body = () => [...app.container.querySelectorAll("label")].find(label => label.firstChild?.textContent === "Template body")!.querySelector<HTMLTextAreaElement>("textarea")!;
+    await app.input(body(), "Keep these unsaved template edits");
+    await app.click(app.button("Accounts"));
+    await app.click(app.button("Disconnect"));
+    assert.deepEqual(app.state.accounts.map(account => account.id), ["b"]);
+    await app.click(app.button("Templates and signatures")); await app.click(app.button("Greeting"));
+    assert.equal(body().value, "Keep these unsaved template edits");
+    await act(async () => app.container.querySelector(".compose-settings")!.dispatchEvent(new app.window.Event("submit", { bubbles: true, cancelable: true })));
+    assert.equal(app.container.querySelector(".compose-settings [role=alert]")?.textContent, undefined, "removed signatures must not block saving");
+    assert.deepEqual(app.state.composePreferences?.signatures, { b: "Keep this signature" });
+    assert.equal(app.state.composePreferences?.templates[0].body, "Keep these unsaved template edits");
+  } finally { await app.close(); }
 });
 
 test("sender details fold away and the choice survives a restart", async () => {

@@ -23,7 +23,7 @@ function readerDate(date: number) {
  * An opened email: subject, then one sender line with the recipient beneath
  * and the date at the right, Gmail labels, and the body with its image consent.
  */
-export function Reader({ mail, provider, labels, busy, api, onLabels, onMenu, onMenuKey, onOpen, onChanged, onReplyAll, onTrack }: {
+export function Reader({ mail, provider, labels, busy, api, onLabels, onMenu, onMenuKey, onOpen, onChanged, onReplyAll }: {
   mail: Mail;
   provider?: Provider;
   labels: GmailLabel[];
@@ -33,7 +33,6 @@ export function Reader({ mail, provider, labels, busy, api, onLabels, onMenu, on
   onOpen?: (mail: Mail) => void;
   onChanged?: () => Promise<unknown>;
   onReplyAll?: () => void;
-  onTrack?: () => void;
   onMenu: (event: MouseEvent<HTMLElement>, mail: Mail) => void;
   onMenuKey: (event: KeyboardEvent<HTMLElement>, mail: Mail) => void;
 }) {
@@ -63,7 +62,8 @@ export function Reader({ mail, provider, labels, busy, api, onLabels, onMenu, on
             <button className="link" disabled={busy} onClick={onLabels}>Edit labels</button>
           </div>
         )}
-        <div className="message-labels">{onReplyAll && <button type="button" className="link" disabled={busy} onClick={onReplyAll}>Reply all</button>}{onTrack && <button type="button" className="link" disabled={busy} onClick={onTrack}>Track work</button>}</div>
+        {onReplyAll && <div className="message-labels"><button type="button" className="link" disabled={busy} onClick={onReplyAll}>Reply all</button></div>}
+        {mail.snoozedUntil !== null && mail.snoozedUntil > Date.now() && <p className="message-return">Returns to Inbox <time dateTime={new Date(mail.snoozedUntil).toISOString()}>{new Date(mail.snoozedUntil).toLocaleString()}</time> (local time)</p>}
         <ReaderContent key={`content:${mail.id}`} mail={mail}
           loadContent={(id) => api(`/messages/${encodeURIComponent(id)}/content`, "POST")}
           loadImages={(id) => api(`/messages/${encodeURIComponent(id)}/images`, "POST")} />
