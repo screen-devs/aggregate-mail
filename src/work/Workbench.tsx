@@ -435,13 +435,13 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
         <details className="agent-add" open={!grants.length || undefined}><summary>Add an assistant</summary>
         <form className="settings-form agent-setup" onSubmit={async(event)=>{event.preventDefault();if(await mutate(()=>api("/agent/grants","POST",{name:agentName,accountIds:grantAccounts,tools:grantTools}))){setAgentName("");setGrantAccounts([]);setGrantTools([]);}}}>
           <h3>Choose a job and its accounts</h3>
-          
+
           <div className="agent-presets">
             <button type="button" onClick={() => { setAgentName("Reading assistant"); setGrantTools(["list_accounts", "list_emails", "search_emails", "read_email", "get_thread"]); }}><strong>Read mail</strong><span>Find and understand cached conversations.</span></button>
             <button type="button" onClick={() => { setAgentName("Organizing assistant"); setGrantTools(["list_accounts", "list_emails", "search_emails", "read_email", "get_thread", "list_projects", "list_commitments"]); }}><strong>Organize work</strong><span>Read mail, projects and follow-ups.</span></button>
             <button type="button" aria-label="Use Reply assistant preset" onClick={() => { setAgentName("Reply assistant"); setGrantTools(["read_email", "propose_draft"]); }}><strong>Prepare replies</strong><span>Draft a reply for your review.</span></button>
           </div>
-          
+
           <PrivateField label="Agent name" value={agentName} onChange={setAgentName} required maxLength={100} />
           <fieldset><legend>Allowed accounts</legend>{state.accounts.map((account,index)=><label key={account.id}><input type="checkbox" checked={grantAccounts.includes(account.id)} onChange={()=>setGrantAccounts(grantAccounts.includes(account.id)?grantAccounts.filter((id)=>id!==account.id):[...grantAccounts,account.id])} /><Redact text={accountLabel(account,index,privacy)} /></label>)}</fieldset>
           <details><summary>Advanced: allowed tools</summary><p>Immediate creation is off by default. Select each creation permission only if this agent may save local work without asking again.</p><fieldset><legend>Allowed tools</legend>{tools.map((tool)=><label key={tool}><input type="checkbox" checked={grantTools.includes(tool)} onChange={()=>setGrantTools(grantTools.includes(tool)?grantTools.filter((item)=>item!==tool):[...grantTools,tool])}/>{toolNames[tool]} <small>({tool})</small></label>)}</fieldset></details>
@@ -450,7 +450,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
         </details>
         </div>}
         {mode === "agents" && <div className="agent-proposals">
-        
+
         {!workspace.proposals.some((proposal) => (proposal.status === "pending") === (agentTab === "review")) && <p className="agent-empty">{agentTab === "review" ? "Nothing waiting for review. Proposed changes will appear here." : "No completed actions yet."}</p>}
         {workspace.proposals.map((proposal)=><div hidden={(proposal.status === "pending") !== (agentTab === "review")} key={proposal.id}><Proposal permissionAvailable={!agentStale && grants.some((grant) => grant.id === proposal.agentId)} key={proposal.id+proposal.digest} proposal={proposal} state={state} pending={pending} onOpen={onOpen} onReview={async(approve)=>{
           const out: { result?: AgentProposal } = {};
