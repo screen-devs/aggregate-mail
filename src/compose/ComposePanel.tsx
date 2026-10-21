@@ -110,6 +110,8 @@ export function ComposePanel({
   onAttachmentTask?: (task: Promise<void>) => void;
 }) {
   const { on: privacy } = useContext(PrivacyContext);
+  const sendingIndex = accounts.findIndex((account) => account.id === draft.accountId);
+  const sendingAccount = accounts[sendingIndex];
   const [attachmentError, setAttachmentError] = useState("");
   const [loadingFiles, setLoadingFiles] = useState(false);
   const filesBusy = useRef(false);
@@ -252,7 +254,7 @@ export function ComposePanel({
               {busy ? "Please wait" : "Send"}
             </button>
           </div>
-          <p className="compose-format">Plain text · {draft.inReplyTo ? "Reply from the original account" : "Send from the selected account"}</p>
+          <p className="compose-format">Plain text · From: {sendingAccount ? <Redact text={privacy ? accountLabel(sendingAccount, sendingIndex, true) : sendingAccount.email} /> : "Sending account unavailable"}</p>
         </div>
       </form>
       </div>

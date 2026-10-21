@@ -56,6 +56,11 @@ test("Agent Reviews hides known account names in allowed accounts and existing g
   const summary=()=>[...ui.container.querySelectorAll("article.work-item p")].find(paragraph=>paragraph.textContent?.startsWith("Accounts: "))!;
   assert.ok(allowed().textContent?.includes("Private Reader"));
   assert.equal(summary().textContent,"Accounts: Private Reader");
+  const permissions = ui.container.querySelector<HTMLElement>(".agent-permission-summary")!;
+  assert.equal(permissions.textContent, "Read cached data · Reply drafts for review");
+  assert.equal(permissions.closest("details"), null, "permission summary is visible alongside accounts");
+  assert.equal(permissions.parentElement, summary().parentElement);
+  assert.equal(ui.container.querySelectorAll(".agent-permissions li").length, 2, "full permission list remains available");
   const checkbox=()=>allowed().querySelector<HTMLInputElement>('input[type="checkbox"]')!;
   assert.equal(checkbox().checked,false);
   await ui.click(checkbox());
@@ -70,6 +75,27 @@ test("Agent Reviews hides known account names in allowed accounts and existing g
   await ui.click(checkbox());
   assert.equal(checkbox().checked,false);
   assert.equal(ui.requests.some(request=>request.method!=="GET"),false);
+ }finally{await ui.close();}
+});
+
+test("assistant access can be edited inline to add and remove accounts and permissions",async()=>{
+ const ui=await mount("assistants");try{
+  ui.grants.push({id:"edit-grant",token:"synthetic-edit-only",name:"Editable assistant",accountIds:["a"],tools:["read_email","propose_draft"],createdAt:1});
+  await ui.click(ui.button("Refresh workspace"));
+  await ui.click(ui.button("Edit access"));
+  const form=()=>ui.container.querySelector<HTMLFormElement>('form[aria-label="Edit assistant access"]')!;
+  const box=(text:string)=>[...form().querySelectorAll("label")].find(label=>label.textContent?.includes(text))!.querySelector<HTMLInputElement>("input")!;
+  assert.equal(box("Propose a reply draft").checked,true);assert.equal(box("Track open commitments").checked,false);
+  await ui.click(box("Propose a reply draft"));await ui.click(box("Read a conversation"));await ui.click(box("second@example.com"));
+  await ui.click(ui.button("Save access"));
+  const patch=ui.requests.find(request=>request.method==="PATCH"&&request.url==="/agent/grants/edit-grant")!;
+  assert.deepEqual(patch.body,{accountIds:["a","b"],tools:["read_email","get_thread"]});
+  assert.equal(ui.container.querySelector('form[aria-label="Edit assistant access"]'),null);
+  assert.equal(ui.container.querySelector(".agent-permission-summary")?.textContent, "Read cached data", "summary follows saved access");
+  assert.ok(ui.container.textContent?.includes("Permissions (2)"));
+  assert.deepEqual(ui.notices, [], "saving access does not report an error");
+  await ui.click(ui.button("Edit access"));for(const label of ["Private Reader","second@example.com"])if(box(label).checked)await ui.click(box(label));
+  assert.equal(ui.button("Save access").disabled,true);await ui.click(ui.button("Cancel"));
  }finally{await ui.close();}
 });
 
@@ -90,6 +116,10 @@ test("Agent creation permissions are visible, opt-in and absent from the reply p
     await ui.click(ui.button("Use Reply assistant preset"));
     assert.equal(checkbox("create_project").checked, false);
     assert.equal(ui.requests.some(request => request.method !== "GET"), false, "permission selection does not create work");
+    ui.grants.push({ id: "local-creation", name: "Local work", token: "synthetic-only", accountIds: ["a"], tools: ["create_project", "track_commitment", "archive_email"], createdAt: 1 });
+    await ui.click(ui.button("Refresh workspace"));
+    assert.equal(ui.container.querySelector(".agent-permission-summary")?.textContent, "Mail changes for review · Create projects without review · Track work without review");
+    assert.equal(ui.container.querySelectorAll(".agent-permissions li").length, 3);
   } finally { await ui.close(); }
 });
 
@@ -171,6 +201,7 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
       if(lostPreparation)throw new Error("Synthetic stored-but-lost response");
       result=proposal;
     }
+    else if(url.startsWith("/agent/grants/")&&method==="PATCH"){const id=decodeURIComponent(url.slice("/agent/grants/".length));const grant=grants.find(grant=>grant.id===id)!;Object.assign(grant,body);result=structuredClone(grant);}
     else if(url.startsWith("/agent/grants/")&&method==="DELETE"){const id=decodeURIComponent(url.slice("/agent/grants/".length));const index=grants.findIndex(grant=>grant.id===id);if(index>=0)grants.splice(index,1);result={};}
     else if(url==="/mcp"&&method==="PATCH"){if(mcpPatchFails)throw new Error("Synthetic MCP failure");const input=body as any;if(input.enabled!==undefined)enabled=input.enabled;if(input.allowSending!==undefined)allowSending=input.allowSending;result={enabled,allowSending:allowSending??enabled,token:null};}
     else if(url==="/mcp")result={enabled,allowSending:allowSending??enabled,token:null};
@@ -179,6 +210,7 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
     }else if(url==="/commitments/c1"&&method==="PATCH"){
       if(failure)throw new Error("Synthetic conflict");const input=body as any;assert.equal(input.revision,workspace.commitments[0].revision);workspace.commitments[0]={...workspace.commitments[0],...input,revision:input.revision+1,history:[...workspace.commitments[0].history,{at:2,status:input.status,text:input.text,reason:input.reason,evidenceMailIds:input.evidenceMailIds}]};result=workspace.commitments[0];
     }else if(url==="/projects"&&method==="POST") {const input=body as any;assert.deepEqual(input.confirmAccountIds,["a","b"]);const item={...input,id:"p1",accountIds:["a","b"],crossAccountConfirmed:true,revision:1,updatedAt:1};workspace.projects.push(item);result=item;}
+    else if(url.endsWith("/decisions")&&method==="POST") { if(failure)throw new Error("Synthetic decision failure");throw new Error("Unexpected decision save"); }
     else if(url.endsWith("/approve")){const input=body as any;assert.equal(input.digest,workspace.proposals[0].digest);workspace.proposals[0].status="succeeded";result=workspace.proposals[0];}
     else if(url.startsWith("/messages/") && method==="PATCH") { const mail=state.messages.find(mail=>url.endsWith(encodeURIComponent(mail.id)));if(mail)mail.unread=false;result={}; }
     else if(url==="/state")result={...state,csrf:"synthetic"};else if(url==="/sync")result={errors:[]};
@@ -198,7 +230,7 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
   const click=async(item:HTMLElement)=>act(async()=>item.click());
   const field=(text:string)=>{const label=[...container.querySelectorAll("label")].find(label=>label.childNodes[0]?.textContent===text);assert.ok(label,`field ${text}`);return label.querySelector<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>("input,textarea,select")!;};
   const fill=async(text:string,value:string)=>{const input=field(text);await act(async()=>{Object.getOwnPropertyDescriptor(input.tagName==="TEXTAREA"?dom.window.HTMLTextAreaElement.prototype:input.tagName==="SELECT"?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new dom.window.Event(input.tagName==="SELECT"?"change":"input",{bubbles:true}));});};
-  const submit=async()=>act(async()=>container.querySelector("form")!.dispatchEvent(new dom.window.Event("submit",{bubbles:true,cancelable:true})));
+  const submit=async()=>act(async()=>(container.querySelector(".dialog form") || container.querySelector("form"))!.dispatchEvent(new dom.window.Event("submit",{bubbles:true,cancelable:true})));
   return{container,state,workspace,grants,notices,requests,opened,confirmations,confirm:(value:boolean)=>{confirmed=value;},
     get work(){return currentWork!;},heldReads,
     holdWorkspace:()=>{holdReads=true;},
@@ -206,22 +238,22 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
     holdPreparation:(lost=false)=>{lostPreparation=lost;preparation=new Promise<void>(resolve=>{settlePreparation=resolve;});return ()=>settlePreparation();},button,click,field,fill,submit,render,dom,setMode:(value:typeof mode)=>{mode=value;},filter:async(value:string)=>{accountFilter=value;await render();},enable:()=>{enabled=true;},fail:()=>{failure=true;},failMcp:()=>{mcpPatchFails=true;},failRefresh:(value:boolean)=>{refreshFailure=value;},privacy:async()=>{privacy=true;await render();},async close(){await act(async()=>root.unmount());await act(async()=>{heldReads.forEach(read=>read.release());});dom.window.close();globalThis.fetch=previousFetch;for(const[key,descriptor]of old){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}}};
 }
 
-test("real App launches on the manual action screen without selecting or reading hidden Inbox mail",async()=>{const ui=await mount("actions",true);try{assert.equal(ui.container.querySelector("h1")?.textContent,"Today");assert.equal(ui.container.querySelector(".row"),null);assert.ok(ui.container.textContent?.includes("Work you chose to track"));assert.equal(ui.requests.some(request=>request.method==="PATCH"),false);}finally{await ui.close();}});
+test("real App launches on the manual action screen without selecting or reading hidden Inbox mail",async()=>{const ui=await mount("actions",true);try{assert.equal(ui.container.querySelector("h1")?.textContent,"Today");assert.equal(ui.container.querySelector(".row"),null);assert.ok(ui.container.textContent?.includes("open tasks"));assert.equal(ui.requests.some(request=>request.method==="PATCH"),false);}finally{await ui.close();}});
 
 test("manual commitments keep source identity, partial updates and explicit reopen history",async()=>{const ui=await mount();try{
- await ui.click(ui.button("Confirm a commitment"));await ui.fill("What needs to happen","Deliver two parts");await ui.fill("Why track this or change it","Promise in source");
+ await ui.click(ui.button("Add task"));await ui.fill("What needs to happen","Deliver two parts");await ui.fill("Why track this or change it","Promise in source");
  const sources=ui.container.querySelectorAll<HTMLInputElement>('input[type="radio"]');await ui.click(sources[1]);await ui.submit();
  assert.equal(ui.workspace.commitments[0].sourceMailId,"sent-a");assert.equal(ui.workspace.commitments[0].status,"needs-reply");
- await ui.click(ui.button("Private Reader sent-a · Sent"));assert.deepEqual(ui.opened,["sent-a"]);
- await ui.click(ui.button("Edit commitment"));await ui.fill("What needs to happen","Part two remains");await ui.fill("Why track this or change it","Part one complete, part two still due");await ui.fill("Status","needs-work");await ui.submit();
+ await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-select")!);assert.deepEqual(ui.opened,["sent-a"]);
+ await ui.click(ui.button("Edit task"));await ui.fill("What needs to happen","Part two remains");await ui.fill("Why track this or change it","Part one complete, part two still due");await ui.fill("Status","needs-work");await ui.submit();
  assert.equal(ui.workspace.commitments[0].text,"Part two remains");assert.equal(ui.workspace.commitments[0].history.length,2);
  ui.state.messages[1].unread=false;ui.state.messages[1].archived=true;await ui.render();assert.ok(ui.container.textContent?.includes("Part two remains"));
- await ui.click(ui.button("Edit commitment"));await ui.fill("Status","done");await ui.submit();assert.equal(ui.workspace.commitments[0].status,"done");
- await ui.click(ui.button("Edit commitment"));await ui.fill("Status","needs-work");await ui.fill("Why track this or change it","Explicitly reopened");await ui.submit();assert.equal(ui.workspace.commitments[0].history.length,4);
+ await ui.click(ui.button("Edit task"));await ui.fill("Status","done");await ui.submit();assert.equal(ui.workspace.commitments[0].status,"done");
+ await ui.click(ui.button("Edit task"));await ui.fill("Status","needs-work");await ui.fill("Why track this or change it","Explicitly reopened");await ui.submit();assert.equal(ui.workspace.commitments[0].history.length,4);
 }finally{await ui.close();}});
 
 test("failed commitment save retains edits and privacy removes unfocused editor values",async()=>{const ui=await mount();try{
- await ui.click(ui.button("Confirm a commitment"));
+ await ui.click(ui.button("Add task"));
  await ui.fill("What needs to happen","Private Reader promise");
  await ui.fill("Why track this or change it","reader@example.com evidence");
  await ui.click(ui.container.querySelector<HTMLInputElement>('input[type="radio"]')!);
@@ -276,7 +308,7 @@ test("project links require explicit confirmation of the exact multi-account set
 
 test("acknowledged save with failed refresh retains input and blocks duplicate submission",async()=>{
  const ui=await mount();try{
-  await ui.click(ui.button("Confirm a commitment"));await ui.fill("What needs to happen","Saved once");await ui.fill("Why track this or change it","Confirmed source");await ui.click(ui.container.querySelector<HTMLInputElement>('input[type="radio"]')!);
+  await ui.click(ui.button("Add task"));await ui.fill("What needs to happen","Saved once");await ui.fill("Why track this or change it","Confirmed source");await ui.click(ui.container.querySelector<HTMLInputElement>('input[type="radio"]')!);
   ui.failRefresh(true);await ui.submit();
   assert.equal(ui.workspace.commitments.length,1);assert.equal(ui.field("What needs to happen").value,"Saved once");
   assert.ok(ui.container.textContent?.includes("Change was saved, but workspace refresh failed"));
@@ -287,9 +319,58 @@ test("acknowledged save with failed refresh retains input and blocks duplicate s
  }finally{await ui.close();}
 });
 
+test("failed decision save keeps text and sources through project clicks until recovery is reviewed", async () => {
+ const ui = await mount("projects"); try {
+  for (const name of ["Project A", "Project B"]) ui.workspace.projects.push({ id: name, name, sourceMailIds: ["in-a"], accountIds: ["a"], crossAccountConfirmed: false, revision: 1, updatedAt: 1 });
+  await ui.click(ui.button("Refresh workspace")); await ui.click(ui.button("Project A"));
+  await ui.click(ui.container.querySelector<HTMLElement>(".project-decisions summary")!);
+  await ui.fill("What was agreed", "Keep the agreed delivery date");
+  const source = ui.container.querySelector<HTMLInputElement>('.project-decisions input[type="checkbox"]')!;
+  await ui.click(source); ui.fail(); await ui.submit();
+  assert.match(ui.container.textContent!, /Change was not confirmed/);
+  for (const name of ["Project A", "Project B"]) {
+   await ui.click(ui.button(name));
+   assert.equal(ui.field("What was agreed").value, "Keep the agreed delivery date", name);
+   assert.equal(source.isConnected && source.checked, true, name);
+   assert.equal(ui.button(name).disabled, true, name);
+  }
+  await ui.click(ui.button("Refresh workspace"));
+  assert.equal(ui.button("Project B").disabled, true, "refresh alone cannot discard unresolved input");
+  assert.equal(ui.field("What was agreed").value, "Keep the agreed delivery date");
+  await ui.click(ui.button("I reviewed saved work"));
+  assert.equal(ui.button("Project B").disabled, false);
+  assert.equal(ui.field("What was agreed").value, "Keep the agreed delivery date");
+  assert.equal(source.checked, true);
+  await ui.click(ui.button("Project B"));
+  assert.equal(ui.button("Project B").getAttribute("aria-pressed"), "true");
+  assert.equal(ui.requests.filter(request => request.url.endsWith("/decisions") && request.method === "POST").length, 1);
+ } finally { await ui.close(); }
+});
+
+test("proposal envelope omits empty Cc and attachment rows without removing the review gate", async () => {
+ const ui = await mount("agents"); try {
+  ui.workspace.proposals.push({ id: "empty-envelope", agentId: "agent", accountId: "a", action: "draft", payload: { accountId: "a", to: "recipient@example.test", cc: [], subject: "Proposal", body: "Review this text", attachments: [] }, sourceMailId: "in-a", digest: "d".repeat(64), status: "pending", createdAt: 1 });
+  await ui.click(ui.button("Refresh workspace"));
+  const card = ui.container.querySelector(".agent-proposal")!;
+  assert.deepEqual([...card.querySelectorAll("dt")].map(node => node.textContent), ["From", "To", "Subject"]);
+  assert.equal(card.textContent?.includes("Attachments:"), false);
+  assert.equal(card.querySelector("pre")?.textContent, "Review this text");
+  assert.equal(!!card.querySelector('input[type="checkbox"]'), true);
+  assert.equal(ui.button("Approve and save draft").disabled, true);
+ } finally { await ui.close(); }
+});
+
 test("reply proposals freeze exact payload, need reviewed evidence and approve into Drafts without the sending switch",async()=>{const ui=await mount("agents");try{
  ui.grants.push({id:"agent",name:"Sender",token:"synthetic-only",accountIds:["a"],tools:["reply_to_email"],createdAt:1});
  const proposal:AgentProposal={id:"proposal",agentId:"agent",accountId:"a",action:"send",payload:{accountId:"a",to:"recipient@example.com",cc:["copy@example.com"],subject:"Reviewed subject",body:"Exact body",attachments:[{filename:"note.txt",contentType:"text/plain",content:"bm90ZQ=="}]},sourceMailId:"in-a",digest:"d".repeat(64),status:"pending",createdAt:1};ui.workspace.proposals.push(proposal);await ui.click(ui.button("Refresh workspace"));
+ const card = ui.container.querySelector(".agent-proposal")!;
+ assert.deepEqual([...card.querySelectorAll(".proposal-envelope dt")].map(node => node.textContent), ["From", "To", "Cc", "Subject"]);
+ assert.deepEqual([...card.querySelectorAll(".proposal-envelope dd")].map(node => node.textContent), ["reader@example.com", "recipient@example.com", "copy@example.com", "Reviewed subject"]);
+ assert.equal(card.querySelector("pre")?.textContent, "Exact body");
+ assert.equal(card.querySelector(".proposal-header p")?.textContent, "Status: pending");
+ assert.ok(card.textContent?.includes("note.txt (text/plain, 6 bytes)"));
+ assert.equal(card.querySelectorAll(".work-source").length, 1);
+ assert.equal(card.querySelector("details code")?.textContent, proposal.digest);
  assert.ok(ui.container.textContent?.includes("Exact body"));assert.ok(ui.container.textContent?.includes("copy@example.com"));assert.ok(!ui.container.innerHTML.includes("bm90ZQ=="));const review=[...ui.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].at(-1)!;assert.equal(ui.button("Approve and open in Drafts").disabled,true);await ui.click(review);assert.equal(ui.button("Approve and open in Drafts").disabled,false);assert.ok(ui.container.textContent?.includes("Nothing is sent until you press Send"));proposal.sourceChanged=true;await ui.click(ui.button("Refresh workspace"));assert.equal(ui.button("Approve and open in Drafts").disabled,true);assert.ok(ui.container.textContent?.includes("Evidence changed"));
  proposal.sourceChanged=false;await ui.click(ui.button("Refresh workspace"));await ui.click(ui.button("Approve and open in Drafts"));assert.equal(ui.requests.filter(request=>request.url.endsWith("/approve")).length,1);
 }finally{await ui.close();}});
@@ -300,7 +381,7 @@ test("workspace hides source-header-only names in commitments, history and propo
   ui.workspace.commitments.push({id:"c1",accountId:"a",sourceMailId:"in-a",text:"Nora Lane promise",reason:"Nora Lane requested it",status:"needs-work",evidenceMailIds:["in-a","missing-private-id"],revision:1,updatedAt:1,projectId:"p1",history:[{at:1,status:"needs-work",text:"Nora Lane promise",reason:"Nora Lane requested it",evidenceMailIds:["missing-private-id"]}]});
   ui.workspace.projects.push({id:"p1",name:"Synthetic project",sourceMailIds:["in-a"],accountIds:["a"],crossAccountConfirmed:false,revision:1,updatedAt:1});
   await ui.click(ui.button("Refresh workspace"));await ui.privacy();assert.ok(!ui.container.innerHTML.includes("Nora"));assert.ok(!ui.container.innerHTML.includes("Lane"));
-  await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-select")!);await ui.click(ui.button("Edit commitment"));assert.ok(ui.container.textContent?.includes("Selected evidence unavailable in cache"));assert.ok(!ui.container.innerHTML.includes("missing-private-id"));
+  await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-select")!);await ui.click(ui.button("Edit task"));assert.ok(ui.container.textContent?.includes("Selected evidence unavailable in cache"));assert.ok(!ui.container.innerHTML.includes("missing-private-id"));
   assert.equal(ui.container.querySelector<HTMLFormElement>("form")!.checkValidity(),true,"hidden populated required editors remain valid");
   await ui.fill("Project","");await ui.submit();assert.equal(ui.requests.filter(request=>request.method==="PATCH").at(-1)?.body.projectId,null);
   ui.workspace.proposals.push({id:"p",agentId:"agent",accountId:"a",action:"draft",payload:{accountId:"a",to:"recipient@example.com",subject:"Nora Lane plan",body:"Nora Lane evidence"},digest:"e".repeat(64),sourceMailId:"in-a",createdAt:1,status:"rejected"});
@@ -324,23 +405,24 @@ test("reader tracking source is consumed and returning to Actions does not start
 
 test("calendar schedules and clears a follow-up without completing or moving its deadline", async () => {
  const ui=await mount("calendar");try {
-  await ui.click(ui.button("Confirm a commitment"));await ui.fill("What needs to happen","Proposal Friday");await ui.fill("Why track this or change it","Confirmed in source");await ui.fill("Due date","2026-10-16");await ui.fill("Reminder","2026-10-15T09:30");await ui.click(ui.container.querySelector<HTMLInputElement>('input[type="radio"]')!);await ui.submit();
+  await ui.click(ui.button("Add task"));await ui.fill("What needs to happen","Proposal Friday");await ui.fill("Why track this or change it","Confirmed in source");await ui.fill("Due date","2026-10-16");await ui.fill("Reminder","2026-10-15T09:30");await ui.click(ui.container.querySelector<HTMLInputElement>('input[type="radio"]')!);await ui.submit();
   assert.equal(ui.workspace.commitments[0].dueDate,"2026-10-16");assert.equal(ui.workspace.commitments[0].followUpAt,new Date("2026-10-15T09:30").getTime());
-  await ui.click(ui.button("Edit commitment"));await ui.fill("Reminder","2026-10-19T10:00");await ui.submit();
+  await ui.click(ui.button("Edit task"));await ui.fill("Reminder","2026-10-19T10:00");await ui.submit();
   assert.equal(ui.workspace.commitments[0].dueDate,"2026-10-16");assert.equal(ui.workspace.commitments[0].status,"needs-reply");
-  await ui.click(ui.button("Edit commitment"));await ui.fill("Reminder","");await ui.submit();
+  await ui.click(ui.button("Edit task"));await ui.fill("Reminder","");await ui.submit();
   assert.equal(ui.requests.filter(request=>request.method==="PATCH").at(-1)?.body.followUpAt,null);assert.equal(ui.workspace.commitments[0].status,"needs-reply");
  }finally{await ui.close();}
 });
 
 test("month and agenda keep undated, overdue, account scope and source inspection reachable", async () => {
  const ui=await mount("calendar");try {
-  const now=new Date();const date=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`;
+  const now=new Date();const month=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;const date=`${month}-${now.getDate()===1?"02":"01"}`;const today=`${month}-${String(now.getDate()).padStart(2,"0")}`;
   const base:Commitment={id:"c1",accountId:"a",sourceMailId:"in-a",text:"Visible promise",reason:"Confirmed",status:"needs-work",dueDate:date,evidenceMailIds:["in-a"],revision:1,updatedAt:1,history:[]};
   ui.workspace.commitments.push(base,{...base,id:"c2",accountId:"b",sourceMailId:"in-b",text:"Other account promise"},{...base,id:"c3",text:"Undated promise",dueDate:undefined},{...base,id:"c4",text:"Already done",status:"done"});
   await ui.click(ui.button("Refresh workspace"));await ui.filter("a");
   await ui.click(ui.container.querySelector<HTMLButtonElement>(`button[aria-label="${date}, 1 scheduled"]`)!);
-  assert.ok(ui.container.textContent?.includes("Visible promise"));assert.ok(!ui.container.textContent?.includes("Other account promise"));assert.ok(!ui.container.textContent?.includes("Already done"));assert.ok(ui.container.textContent?.includes("Undated (1)"));
+  assert.ok(ui.container.textContent?.includes("Visible promise"));assert.ok(!ui.container.textContent?.includes("Other account promise"));assert.ok(!ui.container.textContent?.includes("Already done"));assert.ok(!ui.container.textContent?.includes("Undated"));
+  await ui.click(ui.container.querySelector<HTMLButtonElement>(`button[aria-label="${today}, 1 scheduled"]`)!);assert.ok(ui.container.textContent?.includes("Undated promise"));assert.ok(ui.container.textContent?.includes("No deadline"));
   await ui.click(ui.button("Agenda"));assert.ok(ui.container.querySelector('.work-calendar > .calendar-agenda')?.textContent?.includes("Visible promise"));
   await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-calendar > .calendar-agenda button")!);assert.ok(ui.container.querySelector('[aria-label="Commitment details"]'));
   await ui.click(ui.button("Private Reader in-a · Received"));assert.deepEqual(ui.opened,["in-a"]);
@@ -348,10 +430,35 @@ test("month and agenda keep undated, overdue, account scope and source inspectio
  }finally{await ui.close();}
 });
 
+test("Calendar keeps cached navigation and inspection after a stale error while editing stays blocked", async () => {
+ const ui = await mount("calendar"); try {
+  ui.workspace.commitments.push({ id: "c1", accountId: "a", sourceMailId: "in-a", text: "Cached task", reason: "Confirmed", status: "needs-work", evidenceMailIds: ["in-a"], revision: 1, updatedAt: 1, history: [] });
+  await ui.click(ui.button("Refresh workspace"));
+  ui.failRefresh(true); await ui.click(ui.button("Refresh workspace"));
+  assert.match(ui.container.textContent!, /Cached work is shown/);
+  const heading = () => ui.container.querySelector(".calendar-period h2")?.textContent;
+  const month = heading();
+  for (const label of ["Previous month", "Next month", "Today", "Month", "Agenda"]) assert.equal(ui.button(label).matches(":disabled"), false, label);
+  await ui.click(ui.button("Next month")); assert.notEqual(heading(), month);
+  await ui.click(ui.button("Previous month")); assert.equal(heading(), month);
+  await ui.click(ui.button("Agenda"));
+  const task = ui.container.querySelector<HTMLButtonElement>(".work-calendar > .calendar-agenda button")!;
+  assert.ok(task); assert.equal(task.matches(":disabled"), false);
+  await ui.click(task); assert.match(ui.container.querySelector('[aria-label="Commitment details"]')!.textContent!, /Cached task/);
+  for (const label of ["Add task", "Edit task", "Fetch up to 50 Sent messages"]) {
+    assert.equal(ui.button(label).matches(":disabled"), true, label); await ui.click(ui.button(label));
+  }
+  assert.equal(ui.container.querySelector('[role="dialog"]'), null);
+  assert.equal(ui.requests.some(request => request.method !== "GET"), false, "cached navigation never saves work");
+  ui.failRefresh(false); await ui.click(ui.button("Refresh workspace"));
+  assert.equal(ui.button("Edit task").matches(":disabled"), false, "refresh restores editing");
+ } finally { await ui.close(); }
+});
+
 test("source picker stays bounded while search reaches older cached messages", async () => {
  const ui=await mount();try {
   ui.state.messages=Array.from({length:200},(_,index)=>({...ui.state.messages[0],id:`m-${index}`,subject:`Cached message ${index}`,date:index}));await ui.render();
-  await ui.click(ui.button("Confirm a commitment"));assert.equal(ui.container.querySelectorAll('input[type="radio"]').length,5);
+  await ui.click(ui.button("Add task"));assert.equal(ui.container.querySelectorAll('input[type="radio"]').length,5);
   assert.match(ui.container.querySelector(".work-source-option strong")!.textContent!,/message 199/);
   const search=ui.container.querySelector<HTMLDetailsElement>("details.work-source-search")!;assert.equal(search.open,false);await ui.click(search.querySelector("summary")!);
   await ui.fill("Find a source email",'subject:"message 0"');assert.equal(ui.container.querySelectorAll('input[type="radio"]').length,1);
@@ -362,7 +469,7 @@ test("source picker stays bounded while search reaches older cached messages", a
 
 test("commitment dialog blocks app navigation and Commands until explicitly closed",async()=>{
  const ui=await mount("actions",true);try {
-  await ui.click(ui.button("Confirm a commitment"));await ui.fill("What needs to happen","Keep my edit");
+  await ui.click(ui.button("Add task"));await ui.fill("What needs to happen","Keep my edit");
   const inbox=[...ui.container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find(button=>button.textContent?.trim().startsWith("Inbox"))!;
   await ui.click(inbox);assert.equal(ui.container.querySelector("h1")?.textContent,"Today");
   await act(async()=>window.dispatchEvent(new ui.dom.window.KeyboardEvent("keydown",{key:"k",ctrlKey:true,bubbles:true})));assert.equal(ui.container.querySelectorAll('[role="dialog"]').length,1);assert.equal(ui.field("What needs to happen").value,"Keep my edit");
@@ -378,7 +485,12 @@ test("OpenCode manual setup copies the scoped grant config, keeps the credential
   const token=opencodeCredential("a");
   ui.grants.push({id:"g1",name:"OpenCode",accountIds:["a"],tools:["list_emails"],token,createdAt:1});
   await ui.click(ui.button("Refresh workspace"));
-  assert.ok(ui.container.querySelector("details.work-opencode"),"each grant gets a setup disclosure");
+  const setup = ui.container.querySelector<HTMLDetailsElement>("details.work-opencode")!;
+  assert.ok(setup,"each grant gets a setup disclosure");
+  assert.equal(setup.open, false);
+  assert.equal(setup.querySelector("details.work-opencode"), null, "OpenCode setup has one connection disclosure");
+  await ui.click(setup.querySelector("summary")!);
+  assert.equal(setup.open, true);
   assert.ok(!ui.container.innerHTML.includes(token),"credential and config start hidden");
   const copied:string[]=[];
   Object.assign(ui.dom.window,{desktop:{copyOpenCodeConfig:async(value:string)=>{copied.push(value);}}});
@@ -643,7 +755,7 @@ for(const [label,status,prefix,kind] of [
  ["Waiting for someone","waiting","Waiting on","wait"],
 ] as const)test(`new commitment template ${label} is editable, explicit and source-bound`,async()=>{
  const ui=await mount();try{
-  await ui.click(ui.button("Confirm a commitment"));
+  await ui.click(ui.button("Add task"));
   await ui.click(ui.container.querySelector<HTMLInputElement>('input[type="radio"]')!);
   await ui.click(ui.button(label));
   assert.equal(ui.field("What needs to happen").value,`${prefix}: Private Reader in-a`);
@@ -659,7 +771,8 @@ for(const [label,status,prefix,kind] of [
   assert.equal(input.accountId,"a");assert.equal(input.sourceMailId,"in-a");assert.deepEqual(input.evidenceMailIds,["in-a"]);
   assert.equal(input.dueDate,undefined);assert.equal(input.followUpAt,undefined);
   assert.equal(ui.workspace.commitments[0].history[0].reason,"My reason");
-  await ui.click(ui.button("Edit commitment"));
+  await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-select")!);
+  await ui.click(ui.button("Edit task"));
   assert.equal(ui.container.querySelector(".work-templates"),null,"templates never overwrite existing item history");
   assert.equal(ui.field("What needs to happen").value,"My explicit action");
  }finally{await ui.close();}
@@ -680,7 +793,7 @@ test("coverage account labels redact known private names without losing coverage
 
 test("templates keep source subjects out of private text and attributes and explain dates",async()=>{
  const ui=await mount();try{
-  await ui.click(ui.button("Confirm a commitment"));
+  await ui.click(ui.button("Add task"));
   await ui.click(ui.container.querySelector<HTMLInputElement>('input[type="radio"]')!);
   await ui.privacy();
   await act(async()=>ui.button("Reply to this email").focus());
@@ -695,7 +808,7 @@ test("templates keep source subjects out of private text and attributes and expl
  }finally{await ui.close();}
 });
 
-for(const [mode,purpose] of [["actions","Work you chose to track"],["calendar","Follow-ups, deadlines and snoozed mail"],["projects","Work you chose to track"],["agents","Review changes before they run"]] as const)test(`${mode} explains its purpose`,async()=>{
+for(const [mode,purpose] of [["actions","open tasks"],["calendar","Follow-ups, deadlines and snoozed mail"],["agents","Review changes before they run"]] as const)test(`${mode} explains its purpose`,async()=>{
  const ui=await mount(mode);try{assert.ok(ui.container.textContent?.includes(purpose));assert.equal(ui.requests.some(request=>request.method!=="GET"),false);}finally{await ui.close();}
 });
 
@@ -728,10 +841,36 @@ test("project buttons switch context without saving or combining accounts", asyn
     assert.equal(buttons().length, 2);
     await ui.click(buttons()[0]);
     assert.deepEqual(buttons().map(button => button.getAttribute("aria-pressed")), ["true", "false"]);
-    assert.ok(ui.container.querySelector("h2")?.textContent?.includes("First project"));
+    assert.equal(buttons()[0].textContent, "First project");
+    assert.equal(ui.container.querySelector(".project-overview"), null);
+    assert.equal(ui.container.querySelector(".work-intro"), null);
+    assert.equal(ui.container.querySelector(".project-filters small"), null, "navigation does not repeat task counts");
+    assert.ok(ui.container.querySelector(".work-toolbar .project-filters"), "navigation shares the action bar");
+    assert.equal(ui.container.textContent?.split("First project").length, 2, "project name appears once");
     await ui.click(buttons()[1]);
     assert.deepEqual(buttons().map(button => button.getAttribute("aria-pressed")), ["false", "true"]);
-    assert.ok(ui.container.querySelector("h2")?.textContent?.includes("Second project"));
+    assert.equal(buttons()[1].textContent, "Second project");
     assert.equal(ui.requests.some(request => request.method !== "GET"), false);
+  } finally { await ui.close(); }
+});
+
+test("a project task starts with its project and source, while private email rows hide known names", async () => {
+  const ui = await mount("projects");
+  try {
+    ui.workspace.projects.push({ id: "project", name: "Website", sourceMailIds: ["in-a"], accountIds: ["a"], crossAccountConfirmed: false, revision: 1, updatedAt: 1 });
+    await ui.click(ui.button("Refresh workspace"));
+    await ui.click(ui.container.querySelector<HTMLButtonElement>(".project-filters button")!);
+    await ui.privacy();
+    assert.ok(!ui.container.querySelector(".project-mail")?.innerHTML.includes("Private Reader"));
+    assert.ok(!ui.container.querySelector(".project-mail")?.innerHTML.includes("reader@example.com"));
+    await ui.click(ui.button("Add task"));
+    assert.equal(ui.field("Project").value, "project");
+    assert.equal(ui.container.querySelector<HTMLInputElement>('.work-sources input:checked')?.closest("label")?.querySelector("strong")?.textContent?.includes("in-a"), true);
+    await ui.click(ui.button("Do a task"));
+    await ui.submit();
+    assert.equal(ui.workspace.commitments.length, 1);
+    assert.equal(ui.workspace.commitments[0].projectId, "project");
+    assert.equal(ui.workspace.commitments[0].sourceMailId, "in-a");
+    assert.equal(ui.workspace.commitments[0].status, "needs-work");
   } finally { await ui.close(); }
 });

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Compact Projects into one navigation/action row with tasks before emails and decisions. Preserve failed decision input during recovery. Reduce empty Today groups and proposal spacing while keeping review controls explicit.
+- Expand closed mail lists and collapse optional conversation details. Hide confirmed-empty attachment/image sections and show snoozed return times in the reader. Row actions keep appearing over the row on hover, without reserving empty space.
+- Retain unsaved templates and signatures across Settings navigation and close, removing disconnected-account signatures without losing other edits. Keep pending saves locked across navigation so older responses cannot replace newer changes. Reset section scrolling and reduce control spacing; distinguish unavailable draft counts from empty lists.
+- Give Today more room for the email, with compact task rows and collapsed details. Projects shows email rows, open tasks and decisions with an inline reader; adding a task keeps the selected project and closes any previous email.
+
+- Edit an assistant's allowed accounts and permissions in place. Changes apply to its next request and to pending approvals.
+- Keep selected Today work in the right pane when there is room, even when mail opens in place. Show open undated work on today's date in Calendar.
 - Approving an agent reply now saves it to Drafts and opens it in the composer. Nothing is sent until the user presses Send. Remove the now-unused Allow sending replies switch.
 - Hide account addresses in the composer From list in privacy mode and drop raw image-link placeholders from mail previews.
 - Document required bounded verification on shared Linux hosts, workflow failure cases and artifact-bound installed smoke checks. Keep synthetic, installed and real-account acceptance separate.

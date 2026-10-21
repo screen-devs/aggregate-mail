@@ -49,6 +49,7 @@ function reader(opened = true, accountFilter = "a", selectedId: string | null = 
     get filtered() { return this.state.messages.filter((mail) => (this.accountFilter === "all" || mail.accountId === this.accountFilter) && matchesLabel(mail, this.activeLabel)); },
     get selected() { return selectedMail(this.state.messages, this.filtered, this.selectedId, this.opened); },
     get neighbours(): Mail[] { return handler("neighbours", scope); },
+    get inlineWorkView(): boolean { return handler("inlineWorkView", scope); },
     get neighbourIndex(): number { return handler("neighbourIndex", scope); },
     get previousMail(): Mail | undefined { return handler("previousMail", scope); },
     get nextMail(): Mail | undefined { return handler("nextMail", scope); },
@@ -168,15 +169,15 @@ test("editors, modifiers, settings and dialogs guard navigation and account shor
   }
 });
 
-test("Today mail-action shortcuts require an opened source and retain input, modal and busy guards", () => {
+for (const view of ["actions", "projects"]) test(`${view} mail-action shortcuts require an opened source and retain input, modal and busy guards`, () => {
   for (const key of ["r", "e", "s", "m"]) {
-    for (const guard of ["INPUT", "TEXTAREA", "SELECT", "workModal", "quickSource", "compose", "teach", "snooze", "busy", "closed", "calendar", "projects", "agents"]) {
+    for (const guard of ["INPUT", "TEXTAREA", "SELECT", "workModal", "quickSource", "compose", "teach", "snooze", "busy", "closed", "calendar", "agents"]) {
       const { scope, key: press } = reader();
-      scope.workView = true; scope.view = "actions";
+      scope.workView = true; scope.view = view;
       const actions: string[] = [];
       scope.archive = scope.startCompose = scope.showSnooze = scope.setTeach = () => { actions.push(key); };
       if (guard === "closed") scope.opened = false;
-      else if (["calendar", "projects", "agents"].includes(guard)) scope.view = guard;
+      else if (["calendar", "agents"].includes(guard)) scope.view = guard;
       else if (["workModal", "compose", "teach", "snooze", "busy"].includes(guard)) Object.assign(scope, { [guard]: true });
       else if (guard === "quickSource") Object.assign(scope, { quickSource: "mail" });
       press(key, /^[A-Z]+$/.test(guard) ? { target: new Element(guard) } : {});
