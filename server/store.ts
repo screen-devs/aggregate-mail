@@ -39,7 +39,13 @@ function decrypt(value: string): unknown {
   );
 }
 type Records = {
+  availability: import("../shared/availability.js").AvailabilitySettings;
+  calendarOffer: import("../shared/offers.js").CalendarOffer;
+  calendarOperation: { id: string; accountId: string; eventId: string; revision: number; kind: string; draftId?: string; state: "complete" | "unknown"; remoteId?: string; result?: import("../shared/calendar.js").CalendarEvent; input?: string; requestId?: string; response?: import("../shared/calendar.js").CalendarResponse; sourceMailId?: string; sourceFingerprint?: string };
   commitment: import("../shared/workspace.js").Commitment;
+  googleCalendar: import("../shared/calendar.js").GoogleCalendarConnection;
+  googleCalendarWindow: import("../shared/calendar.js").GoogleCalendarWindow;
+  calendarEvent: import("../shared/calendar.js").CalendarEvent;
   project: import("../shared/workspace.js").Project;
   decision: import("../shared/workspace.js").ProjectDecision;
   coverage: import("../shared/workspace.js").SentCoverage;

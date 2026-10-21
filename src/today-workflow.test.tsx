@@ -4,6 +4,8 @@ import { act } from "react";
 import { JSDOM } from "jsdom";
 import type { Mail, State } from "../shared/types";
 import type { Commitment, Workspace } from "../shared/workspace";
+import type { CalendarEvent } from "../shared/calendar";
+import { localDate } from "../shared/commitment-dates";
 
 const commitment = (id: string, sourceMailId = "mail-a", accountId = "a"): Commitment => ({
   id, accountId, sourceMailId, text: `Deliver ${id}`, reason: "Confirmed by you", status: "needs-work",
@@ -33,6 +35,7 @@ async function mount(items: Commitment[] = [], fullReading = false) {
     googleClientId: null, jevConfigured: false, jevProvider: "typesafe", aiConfigured: false, lastSync: null, syncing: false };
   const workspace: Workspace = { commitments: structuredClone(items), projects: [], decisions: [], coverage: [], proposals: [] };
   const requests: { url: string; method: string; body: Record<string, any> }[] = [];
+  const events: CalendarEvent[] = [];
   let changed: (() => void) | undefined;
   (dom.window as unknown as Window).desktop = { platform: "darwin", materials: false, oauthUrl: "", windowCommand() {},
     onWindowState: () => () => {}, onAccountConnected: () => () => {},
@@ -55,6 +58,11 @@ async function mount(items: Commitment[] = [], fullReading = false) {
     if (url === "/sync") return response({ errors: [] });
     if (url === "/workspace") { if (failRead) throw new Error("Synthetic offline workspace"); return response(workspace); }
     if (url === "/agent/grants") return response([]);
+    if (url.startsWith("/calendar/events?") && method === "GET") return response({ events });
+    if (url === "/calendar/events" && method === "POST") {
+      const event: CalendarEvent = { ...body, attendees: body.attendees.map((email: string) => ({ email })), source: "local", revision: 1, updatedAt: 1 } as CalendarEvent;
+      events.push(event); return response(event);
+    }
     if (url === "/mcp") return response({ enabled: false, allowSending: false });
     if (url.startsWith("/messages/") && method === "PATCH") {
       const target = state.messages.find((mail) => url === `/messages/${encodeURIComponent(mail.id)}`)!;
@@ -130,7 +138,7 @@ async function mount(items: Commitment[] = [], fullReading = false) {
     const edit = [...container.querySelectorAll("button")].find((node) => node.textContent === "Edit details or add reminder");
     if (details && edit) await click(edit);
   };
-  return { dom, container, state, workspace, requests, button, sidebar, click, fill, field, submit, openQuick,
+  return { dom, container, state, workspace, events, requests, button, sidebar, click, fill, field, submit, openQuick,
     refresh: () => click(button("Refresh workspace")),
     mailChanged: async () => act(async () => { changed?.(); }),
     clock: async (at: number) => { const previousNow = Date.now; Date.now = () => at; try { await act(async () => { assert.ok(clockTick); clockTick(); }); } finally { Date.now = previousNow; } },
@@ -387,7 +395,7 @@ test("due counts share account scope across views and exclude cleared, completed
     assert.equal(ui.button("Add task").disabled, true);
     ui.failRead(false); await ui.refresh(); assert.equal(ui.sidebar("Today").getAttribute("aria-label"), "Today, 1 due follow-ups");
     await ui.click(ui.sidebar("All accounts")); assert.equal(ui.sidebar("Today").getAttribute("aria-label"), "Today, 2 due follow-ups");
-    await ui.click(ui.sidebar("Calendar")); assert.ok(ui.container.querySelector('[aria-label="Follow-up calendar"]'));
+    await ui.click(ui.sidebar("Calendar")); assert.ok(ui.container.querySelector('section[aria-label="Calendar"]'));
     await ui.click(ui.sidebar("Agent review")); assert.ok(ui.container.textContent?.includes("Review changes before they run"));
     assert.equal(ui.requests.some((call) => call.method !== "GET" && call.url !== "/sync"), false);
   } finally { await ui.close(); }
@@ -529,5 +537,45 @@ for (const [key, action] of [["r", "reply"], ["e", "archive"], ["s", "snooze"], 
     if (action === "teach") assert.ok(ui.container.querySelector('[role="dialog"]')?.textContent?.includes("distinct@example.test"));
     assert.deepEqual(ui.workspace.commitments, [item]);
     assert.equal(ui.requests.some((call) => call.url.startsWith("/commitments")), false);
+  } finally { await ui.close(); }
+});
+
+test("Schedule meeting prefills an email's subject and people, saves one Emc² event, and Calendar reads mail in its own pane", async () => {
+  const ui = await mount([]); try {
+    const until = new Date(); until.setHours(23, 59, 0, 0);
+    ui.state.messages[0].cc = "Pat <pat@example.test>, reader@example.test";
+    ui.state.messages[2].snoozedUntil = until.getTime(); await ui.mailChanged();
+    await ui.click(ui.sidebar("Inbox"));
+    await act(async () => document.getElementById("mail-mail-a")!.dispatchEvent(new ui.dom.window.MouseEvent("dblclick", { bubbles: true })));
+    await ui.click(ui.button("Schedule meeting"));
+    assert.ok(ui.container.querySelector('[role="dialog"][aria-label="Schedule meeting"]'));
+    assert.equal(ui.field("Title").value, "Private Reader mail-a");
+    assert.equal(ui.field("Attendees").value, "sender@example.test, pat@example.test", "the user's own address is excluded");
+    assert.equal(ui.field("Account").value, "a");
+    const today = localDate(new Date());
+    await ui.fill("Start date", today); await ui.fill("Start time", "09:00");
+    const form = () => ui.container.querySelector<HTMLFormElement>("form.event-form")!;
+    await act(async () => { form().dispatchEvent(new ui.dom.window.Event("submit", { bubbles: true, cancelable: true })); });
+    const posts = ui.requests.filter((call) => call.url === "/calendar/events" && call.method === "POST");
+    assert.equal(posts.length, 1);
+    assert.deepEqual({ ...posts[0].body, id: undefined }, { id: undefined, title: "Private Reader mail-a", start: new Date(`${today}T09:00`).toISOString(), end: new Date(`${today}T09:30`).toISOString(),
+      allDay: false, attendees: ["sender@example.test", "pat@example.test"], accountId: "a", sourceMailId: "mail-a" });
+    assert.equal(ui.container.querySelector('[role="dialog"]'), null);
+    assert.ok(ui.container.textContent?.includes("No invitation was sent."));
+    assert.equal(ui.requests.some((call) => call.url.startsWith("/send") || call.url.includes("/drafts")), false, "scheduling never sends or drafts mail");
+
+    await ui.click(ui.sidebar("Calendar"));
+    await ui.click(ui.container.querySelector<HTMLButtonElement>(`button[aria-label^="${today}, "]`)!);
+    await ui.click([...ui.container.querySelectorAll<HTMLButtonElement>(".calendar-agenda button")].find((node) => node.textContent?.includes("Event"))!);
+    const detail = ui.container.querySelector('[aria-label="Event details"]')!;
+    assert.ok(detail.textContent?.includes("sender@example.test"));
+    await ui.click(ui.button("Private Reader mail-a · Received", detail));
+    assert.ok(ui.container.querySelector('[aria-label="Calendar reading pane"] .message'), "the source opens beside the calendar");
+    assert.equal(ui.container.querySelector(".pane-title")?.textContent, "Calendar");
+    await ui.click(ui.button("Close email"));
+    assert.ok(ui.container.querySelector('[aria-label="Event details"]'), "closing the email returns to the event");
+    await ui.click([...ui.container.querySelectorAll<HTMLButtonElement>(".calendar-agenda button")].find((node) => node.textContent?.includes("Snoozed"))!);
+    assert.ok(ui.container.querySelector('[aria-label="Calendar reading pane"] .message h1')?.textContent?.includes("mail-b"));
+    assert.equal(ui.container.querySelector(".pane-title")?.textContent, "Calendar", "snoozed mail no longer leaves Calendar");
   } finally { await ui.close(); }
 });

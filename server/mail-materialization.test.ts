@@ -98,7 +98,7 @@ if (!process.env.EMC2_MATERIALIZATION_CHILD) {
         return Reflect.apply(serverEmit, this, [event, ...args]);
       } as typeof serverEmit;
       http.ServerResponse.prototype.emit = function(this: http.ServerResponse, event: string | symbol, ...args: unknown[]) {
-        if (event === "close" && this.req.url === "/api/state" && !response) {
+        if (event === "close" && (this.req as import("express").Request).originalUrl === "/api/state" && !response) {
           response = this; decodedAtClose = decoded; signalClose();
         }
         return Reflect.apply(emit, this, [event, ...args]);

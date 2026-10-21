@@ -11,10 +11,14 @@ import { compileMailSearch } from "../mail-search";
 import { Segmented } from "../ui/Segmented";
 import { Dialog } from "../ui/Dialog";
 import { ArrowLeft } from "../ui/icons";
+import { GoogleCalendar } from "./GoogleCalendar";
 import { Calendar } from "./Calendar";
+import type { CalendarEvent, CalendarEventInput } from "../../shared/calendar";
+import { EventDetail, EventForm } from "./EventPanel";
+import { blankEvent, eventFields, useCalendarEvents, type EventFields } from "./events";
 import { AgentProvider } from "./AgentProvider";
 import type { WorkspaceState } from "./useWorkspace";
-import { deadlineDate, localTimeInput, openCommitment } from "../../shared/commitment-dates";
+import { deadlineDate, localDate, localTimeInput, openCommitment } from "../../shared/commitment-dates";
 import { openCodeConfig, openCodeConfigPreview, type OpenCodeSetupResult } from "../../shared/opencode";
 
 const statusNames: Record<CommitmentStatus, string> = { "needs-reply": "Needs reply", "needs-work": "Needs work", waiting: "Waiting", done: "Completed", cancelled: "Cancelled" };
@@ -187,6 +191,13 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
   const { workspace, error, loaded, pending, stale, now, blocked } = work;
   const acknowledged = useRef(false);
   const [editor, setEditor] = useState<Commitment | "new" | null>(initialItem || (initialSource ? "new" : null));
+  const [calendarMonth, setCalendarMonth] = useState(() => localDate(new Date()).slice(0, 7));
+  const calendar = useCalendarEvents(api, calendarMonth, mode === "calendar");
+  const [eventId, setEventId] = useState<string | null>(null);
+  // A new event keeps one ID across retries so an uncertain save cannot create a copy.
+  const [eventEditor, setEventEditor] = useState<{ fields: EventFields; existing?: CalendarEvent; id: string } | null>(null);
+  const calendarOrigin = useRef<HTMLElement | null>(null);
+  const eventPanel = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState(initialDraft);
   const missingSelection = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -201,9 +212,8 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     }
     wasReading.current = readerOpened;
   }, [readerOpened, mode]);
-  useEffect(() => { if (selectedId && mode === "calendar") inspector.current?.focus(); }, [selectedId, mode]);
   const [projectEditor, setProjectEditor] = useState<Project | "new" | null>(null);
-  useEffect(() => { onModalChange?.(!!editor || !!projectEditor); return () => onModalChange?.(false); }, [!!editor, !!projectEditor, onModalChange]);
+  useEffect(() => { onModalChange?.(!!editor || !!projectEditor || !!eventEditor); return () => onModalChange?.(false); }, [!!editor, !!projectEditor, !!eventEditor, onModalChange]);
   const [projectId, setProjectId] = useState("");
   const [decision, setDecision] = useState("");
   const [decisionSources, setDecisionSources] = useState<string[]>([]);
@@ -230,6 +240,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     setAgentName(""); setGrantAccounts([]); setGrantTools([]);
   };
   const load = useCallback(async () => {
+    if (mode === "calendar") void calendar.refresh();
     const ok = await work.refresh();
     if (ok) finishAcknowledged();
     if ((mode === "agents" || mode === "assistants")) {
@@ -240,7 +251,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
       } catch { setAgentError("Agent permissions could not be refreshed. Refresh before editing."); return false; }
     }
     return ok;
-  }, [api, mode, work.refresh]);
+  }, [api, mode, work.refresh, calendar.refresh]);
   useEffect(() => { if ((mode === "agents" || mode === "assistants")) void load(); }, [load, mode]);
   useEffect(() => { setShownToken(undefined); }, [privacy]);
   const mutate = async (task: () => Promise<unknown>) => {
@@ -267,9 +278,11 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     <h3>Source and evidence</h3>{[...new Set([selected.sourceMailId, ...selected.evidenceMailIds])].map((id) => <Source key={id} id={id} state={state} onOpen={onOpen} />)}
     <details><summary>Change history ({selected.history.length})</summary>{selected.history.map((change, index) => <div className="work-item" key={index}><p>{new Date(change.at).toLocaleString()} · {statusNames[change.status]}</p><p><Redact text={change.text} /> · <Redact text={change.reason} /></p><p>Deadline: {deadlineDate(change) || "Not set"} · Follow up: {change.followUpAt === undefined ? "Not set" : new Date(change.followUpAt).toLocaleString()}</p>{change.evidenceMailIds?.map((id) => <Source key={id} id={id} state={state} onOpen={onOpen} />)}</div>)}</details>
   </>;
-  const detail = selected && detailOpen && <section className={mode === "calendar" ? "work-inspector" : "work-summary"} aria-label="Commitment details" ref={inspector} tabIndex={-1}>
+  const closeDetail = () => { setDetailOpen(false); missingSelection.current = false; onCloseReader?.(); if (mode !== "calendar") selectedRow.current?.focus({ preventScroll: true }); };
+  const detail = selected && detailOpen && <section className={mode === "calendar" ? "work-inspector" : "work-summary"} aria-label="Commitment details" ref={inspector} tabIndex={-1}
+    onKeyDown={(event) => { if (mode === "calendar" && event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); closeDetail(); } }}>
     <div className="work-summary-bar">
-      <button type="button" className="icon" aria-label="Back to work list" title="Back to work list" onClick={() => { setDetailOpen(false); missingSelection.current = false; onCloseReader?.(); selectedRow.current?.focus({ preventScroll: true }); }}><ArrowLeft size={15} /></button>
+      <button type="button" className="icon" aria-label={mode === "calendar" ? "Back to calendar" : "Back to work list"} title={mode === "calendar" ? "Back to calendar" : "Back to work list"} onClick={closeDetail}><ArrowLeft size={15} /></button>
       <span className="work-status">{statusNames[selected.status]}</span>
       <strong><Redact text={selected.text} /></strong>
       <button type="button" disabled={blocked} onClick={() => setEditor(selected)}>Edit task</button>
@@ -277,6 +290,40 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     {mode === "calendar" ? detailBody : <details key={selected.id} className="work-task-details"><summary>Details{deadlineDate(selected) && ` · Due ${deadlineDate(selected)}`}{selected.followUpAt !== undefined && ` · Remind ${new Date(selected.followUpAt).toLocaleString()}`}</summary>{detailBody}</details>}
   </section>;
   const dueFollowUps = sorted.filter((item) => openCommitment(item) && item.followUpAt !== undefined && item.followUpAt <= now);
+  const [calendarStatus, setCalendarStatus] = useState("");
+  const [calendarJump, setCalendarJump] = useState<{ day: string; key: number }>();
+  const visibleEvents = useMemo(() => calendar.events.filter((event) => accountFilter === "all" || !event.accountId || event.accountId === accountFilter), [calendar.events, accountFilter]);
+  const selectedEvent = visibleEvents.find((event) => event.id === eventId);
+  useEffect(() => {
+    if (mode !== "calendar" || readerOpened || eventEditor || editor) return;
+    if (selectedEvent) eventPanel.current?.focus();
+    else if (detailOpen) inspector.current?.focus();
+    else calendarOrigin.current?.focus({ preventScroll: true });
+  }, [mode, selectedEvent?.id, selectedId, detailOpen, readerOpened, !!eventEditor, !!editor]);
+  const closeEvent = () => setEventId(null);
+  const saveEvent = async (input: CalendarEventInput) => {
+    const editing = eventEditor;
+    if (!editing) return null;
+    const result = await calendar.mutate(() => editing.existing
+      ? api<CalendarEvent>(`/calendar/events/${encodeURIComponent(editing.existing.id)}`, "PATCH", { ...input, revision: editing.existing.revision })
+      : api<CalendarEvent>("/calendar/events", "POST", { ...input, id: editing.id }));
+    if (!result.ok) return result.error;
+    setEventEditor(null); setDetailOpen(false); setEventId(result.value.id);
+    setCalendarJump({ day: eventFields(result.value).startDate, key: Date.now() });
+    setCalendarStatus(editing.existing ? "Event saved." : "Event added to your Emc² calendar.");
+    return null;
+  };
+  const deleteEvent = async (event: CalendarEvent) => {
+    if (!confirm("Delete this event from your Emc² calendar? This cannot be undone.")) return;
+    const result = await calendar.mutate(() => api(`/calendar/events/${encodeURIComponent(event.id)}`, "DELETE", { revision: event.revision }));
+    if (result.ok) { setCalendarStatus("Event deleted."); closeEvent(); } else setCalendarStatus(result.error);
+  };
+  const calendarPane = mode === "calendar" && (readerOpened
+    ? <aside className="work-inspector calendar-reader" aria-label="Calendar reading pane">{reader || <p role="status">Opened email unavailable in cache. <button type="button" onClick={onCloseReader}>Back to calendar</button></p>}</aside>
+    : selectedEvent ? <EventDetail ref={eventPanel} event={selectedEvent} state={state} pending={calendar.pending} api={api} google={calendar.google.some((value) => value.accountId === selectedEvent.accountId && value.status === "connected")} onOpenDraft={onOpenDraft} onChanged={calendar.refresh}
+      source={selectedEvent.sourceMailId ? <Source id={selectedEvent.sourceMailId} state={state} onOpen={onOpen} /> : undefined}
+      onClose={closeEvent} onEdit={() => setEventEditor({ fields: eventFields(selectedEvent), existing: selectedEvent, id: selectedEvent.id })}
+      onDelete={() => void deleteEvent(selectedEvent)} /> : detail);
   const openCount = sorted.filter(openCommitment).length;
   const closeProjectReader = () => {
     setSelectedId(null); setDetailOpen(false); missingSelection.current = false;
@@ -286,7 +333,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     <div className="work-toolbar">
       {mode === "projects" ? <div className="project-filters" role="group" aria-label="Choose a project">{projects.map((project, index) =>
         <button type="button" key={project.id} disabled={blocked} aria-pressed={projectId === project.id} onClick={() => { setProjectId(project.id); closeProjectReader(); setDecision(""); setDecisionSources([]); }}><Redact text={privacy ? `Project ${index + 1}` : project.name} /></button>
-      )}</div> : <p className="work-intro">{mode === "agents" ? "Review changes before they run." : mode === "assistants" ? "Set up access for each assistant." : mode === "calendar" ? "Follow-ups, deadlines and snoozed mail" : `${openCount} ${stale ? "cached " : ""}open ${openCount === 1 ? "task" : "tasks"}`}</p>}
+      )}</div> : <p className="work-intro">{mode === "agents" ? "Review changes before they run." : mode === "assistants" ? "Set up access for each assistant." : mode === "calendar" ? "Events, tracked work, follow-ups and snoozed mail" : `${openCount} ${stale ? "cached " : ""}open ${openCount === 1 ? "task" : "tasks"}`}</p>}
       <div className="work-controls"><button type="button" disabled={pending || work.refreshing} aria-label="Refresh workspace" onClick={() => void load()}>Refresh</button>{mode === "actions" && <button className="button" type="button" disabled={blocked} onClick={() => setEditor("new")}>Add task</button>}{mode === "projects" && <>
         <button type="button" disabled={blocked} onClick={() => setProjectEditor("new")}>New project</button>
         {selectedProject && <><button type="button" disabled={blocked} onClick={() => setProjectEditor(selectedProject)}>Edit project / add emails</button><button className="button" type="button" disabled={blocked} onClick={() => { setDraft({ projectId: selectedProject.id }); setEditor("new"); }}>Add task</button></>}
@@ -300,8 +347,15 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     {loaded && <fieldset className="work-editing" disabled={mode !== "actions" && mode !== "calendar" && (blocked || (mode === "agents" || mode === "assistants") && agentStale)}>
       {(mode === "actions" || mode === "calendar") && <>
         {mode === "calendar" && <div className="work-toolbar"><button className="button" type="button" disabled={blocked} onClick={() => setEditor("new")}>Add task</button></div>}
-        <div className={`work-layout${detailOpen || readerOpened ? " has-selection" : ""}${mode === "actions" ? " today-layout" : ""}${fullReading ? " full-reading" : ""}`}><div className="work-main">
-          {mode === "calendar" ? <Calendar items={commitments} messages={state.messages.filter((mail) => (accountFilter === "all" || mail.accountId === accountFilter) && state.accounts.some((account) => account.id === mail.accountId))} onOpenMail={onOpen} now={now} onSelect={(id) => { setSelectedId(id); setDetailOpen(true); }} /> : <>
+        {mode === "calendar" && calendar.error && <p role="alert">{calendar.error}</p>}
+        {mode === "calendar" && <><p className="work-meta" role="status">{calendarStatus}</p><GoogleCalendar state={state} calendar={calendar} api={api} month={calendarMonth} accountFilter={accountFilter} /></>}
+        <div className={`work-layout${detailOpen || readerOpened || mode === "calendar" && selectedEvent ? " has-selection" : ""}${mode === "actions" ? " today-layout" : ""}${fullReading ? " full-reading" : ""}`}><div className="work-main">
+          {mode === "calendar" ? <Calendar items={commitments} messages={state.messages.filter((mail) => (accountFilter === "all" || mail.accountId === accountFilter) && state.accounts.some((account) => account.id === mail.accountId))}
+            events={visibleEvents} now={now} selectedEventId={selectedEvent?.id} jump={calendarJump} onMonthChange={setCalendarMonth}
+            onOpenMail={(mail, origin) => { calendarOrigin.current = origin; setEventId(null); setDetailOpen(false); onOpen(mail); }}
+            onSelect={(id, origin) => { calendarOrigin.current = origin; setEventId(null); setSelectedId(id); setDetailOpen(true); if (readerOpened) onCloseReader?.(); }}
+            onSelectEvent={(event, origin) => { calendarOrigin.current = origin; setDetailOpen(false); setEventId(event.id); setCalendarStatus(""); if (readerOpened) onCloseReader?.(); }}
+            onNewEvent={(day) => { setCalendarStatus(""); setEventEditor({ fields: blankEvent(Date.now(), day, accountFilter === "all" ? "" : accountFilter), id: crypto.randomUUID() }); }} /> : <>
             {!stale && dueFollowUps.length > 0 && <p className="work-follow-ups" role="status">{dueFollowUps.length} reminder{dueFollowUps.length === 1 ? "" : "s"} due</p>}
             {(["needs-reply", "needs-work", "waiting"] as CommitmentStatus[]).map((status) => <section className="work-group" key={status}><h2>{statusNames[status]} <span>{sorted.filter((item) => item.status === status).length}</span></h2>{sorted.filter((item) => item.status === status).map(itemRow)}</section>)}
             <details><summary>Completed and cancelled ({sorted.filter((item) => !openCommitment(item)).length})</summary>{sorted.filter((item) => !openCommitment(item)).map(itemRow)}</details>
@@ -309,7 +363,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
         </div>{mode === "actions" ? <aside className="today-reader" aria-label="Today reading pane">
           {detail}
           {readerOpened ? reader || <p role="status">Opened source unavailable in cache. <button type="button" onClick={onCloseReader}>Back to work list</button></p> : selected && detailOpen ? <p role="status">{state.messages.some((mail) => mail.id === selected.sourceMailId && state.accounts.some((account) => account.id === mail.accountId)) ? "Open a source above to read its email." : "Source unavailable in cache. The commitment and its evidence history remain available."}</p> : <p className="work-reader-empty">Select work to read its email here.</p>}
-        </aside> : detail}</div>
+        </aside> : mode === "calendar" ? calendarPane : detail}</div>
       </>}
       {mode === "projects" && <>
         {selectedProject ? <>
@@ -432,6 +486,10 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
           const ok = await mutate(async () => { const saved = await api<Commitment>(editor === "new" ? "/commitments" : `/commitments/${encodeURIComponent(editor.id)}`, editor === "new" ? "POST" : "PATCH", input); if (editor === "new" && (mode === "actions" || mode === "projects") || mode === "projects" && saved.projectId !== projectId) closeProjectReader(); else { setSelectedId(saved.id); setDetailOpen(true); } });
           if (ok) setEditor(null); return ok;
         }} /></fieldset>
+      </Dialog>}
+      {eventEditor && <Dialog title={eventEditor.existing ? "Edit event" : "New event"} className="event-dialog" onClose={() => { if (!calendar.pending) setEventEditor(null); }}>
+        <EventForm key={eventEditor.id} initial={eventEditor.fields} existing={eventEditor.existing} state={state} pending={calendar.pending}
+          onCancel={() => setEventEditor(null)} onSave={saveEvent} />
       </Dialog>}
   </div></PrivacyContext.Provider>;
 }

@@ -65,7 +65,7 @@ function reader(opened = true, accountFilter = "a", selectedId: string | null = 
     pendingReads: { current: new Set<string>() },
     api: async (...args: unknown[]) => { requests.push(args); },
     reload: async () => {},
-    quickSource: null, view: "inbox", busy: false, updateInstalling: false, draftPicker: false, contextMenu: false, palette: false, settings: false, workView: false, compose: false, teach: false,
+    quickSource: null, meetingMail: null, view: "inbox", busy: false, updateInstalling: false, draftPicker: false, contextMenu: false, palette: false, settings: false, workView: false, compose: false, teach: false,
     snooze: false, trashMail: false, trashLock: { current: false }, shortcuts: false, labelMail: false, connecting: false,
     HTMLElement: Element, Error, textSizeShortcut, filterMail, markMailRead, tabOf: () => "primary", search: { matches: () => true },
     interaction: defaults, interactionActions, matches, window: { desktop: { platform: "darwin" } },
@@ -169,17 +169,24 @@ test("editors, modifiers, settings and dialogs guard navigation and account shor
   }
 });
 
-for (const view of ["actions", "projects"]) test(`${view} mail-action shortcuts require an opened source and retain input, modal and busy guards`, () => {
+for (const view of ["actions", "projects", "calendar"]) test(`${view} mail-action shortcuts require an opened source and retain input, modal and busy guards`, () => {
   for (const key of ["r", "e", "s", "m"]) {
-    for (const guard of ["INPUT", "TEXTAREA", "SELECT", "workModal", "quickSource", "compose", "teach", "snooze", "busy", "closed", "calendar", "agents"]) {
+    const { scope: opened, key: invoke } = reader();
+    opened.workView = true; opened.view = view;
+    const admitted: string[] = [];
+    opened.archive = opened.startCompose = opened.showSnooze = opened.setTeach = () => { admitted.push(key); };
+    invoke(key);
+    assert.deepEqual(admitted, [key], `${view}: opened source accepts ${key}`);
+    for (const guard of ["INPUT", "TEXTAREA", "SELECT", "workModal", "quickSource", "meetingMail", "compose", "teach", "snooze", "busy", "closed", "agents"]) {
       const { scope, key: press } = reader();
       scope.workView = true; scope.view = view;
       const actions: string[] = [];
       scope.archive = scope.startCompose = scope.showSnooze = scope.setTeach = () => { actions.push(key); };
       if (guard === "closed") scope.opened = false;
-      else if (["calendar", "agents"].includes(guard)) scope.view = guard;
+      else if (guard === "agents") scope.view = guard;
       else if (["workModal", "compose", "teach", "snooze", "busy"].includes(guard)) Object.assign(scope, { [guard]: true });
       else if (guard === "quickSource") Object.assign(scope, { quickSource: "mail" });
+      else if (guard === "meetingMail") Object.assign(scope, { meetingMail: a });
       press(key, /^[A-Z]+$/.test(guard) ? { target: new Element(guard) } : {});
       assert.deepEqual(actions, [], `${key}: ${guard}`);
     }

@@ -1,10 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { JSDOM } from "jsdom";
 import type { Mail, State } from "../shared/types";
 import type { AgentGrant, AgentProposal, Commitment, Workspace } from "../shared/workspace";
 import type { Api } from "./api";
+import type { CalendarEvent, GoogleCalendarStatus } from "../shared/calendar";
 import { useWorkspace, type WorkspaceState } from "./work/useWorkspace";
 
 test("Projects hides known account names while preserving exact cross-account approval",async()=>{
@@ -174,6 +176,9 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
   const state:State={accounts:[{id:"a",email:"reader@example.com",provider:"imap",name:"Private Reader"},{id:"b",email:"second@example.com",provider:"gmail"}],messages:[mail("in-a","a"),mail("sent-a","a","sent"),mail("in-b","b")],labels:[],rules:[],googleConfigured:false,googleClientId:null,jevConfigured:false,jevProvider:"typesafe",aiConfigured:false,lastSync:null,syncing:false};
   const workspace:Workspace={commitments:[],projects:[],decisions:[],coverage:[],proposals:[]};
   const grants:AgentGrant[]=[];
+  const events:CalendarEvent[]=[];let eventFailure=false;
+  let eventSave: Promise<void> | undefined; let releaseEventSave = () => {};
+  const google:GoogleCalendarStatus[]=[];let syncEvents:CalendarEvent[]|undefined;
   const requests:{url:string;method:string;body:any}[]=[];const opened:string[]=[];
   let enabled=false, allowSending:boolean|undefined=undefined, failure=false, refreshFailure=false, mcpPatchFails=false;
   let configuredProvider = false, holdReads = false, lostPreparation = false;
@@ -213,6 +218,12 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
     else if(url.endsWith("/decisions")&&method==="POST") { if(failure)throw new Error("Synthetic decision failure");throw new Error("Unexpected decision save"); }
     else if(url.endsWith("/approve")){const input=body as any;assert.equal(input.digest,workspace.proposals[0].digest);workspace.proposals[0].status="succeeded";result=workspace.proposals[0];}
     else if(url.startsWith("/messages/") && method==="PATCH") { const mail=state.messages.find(mail=>url.endsWith(encodeURIComponent(mail.id)));if(mail)mail.unread=false;result={}; }
+    else if(url.startsWith("/calendar/events?")&&method==="GET")result={events:structuredClone(events),google:structuredClone(google)};
+    else if(url.startsWith("/calendar/google/")&&method==="POST"){const accountId=decodeURIComponent(url.split("/")[3]);const value=google.find(value=>value.accountId===accountId)!;value.stale=false;value.syncedAt=Date.now();if(syncEvents){for(let i=events.length-1;i>=0;i--)if(events[i].source==="google"&&events[i].accountId===accountId)events.splice(i,1);events.push(...syncEvents);}result={ok:true};}
+    else if(url.startsWith("/calendar/google/")&&method==="PATCH"){const value=google.find(value=>value.accountId===decodeURIComponent(url.split("/")[3]))!;value.selectedIds=(body as any).selectedIds;value.stale=true;value.syncedAt=0;result={ok:true};}
+    else if(url==="/calendar/events"&&method==="POST"){await eventSave;if(eventFailure)throw new Error("Synthetic event failure");const input=body as any;const saved=events.find(event=>event.id===input.id);if(saved)result=saved;else{const event:CalendarEvent={...input,attendees:input.attendees.map((email:string)=>({email})),source:"local",revision:1,updatedAt:1};events.push(event);result=event;}}
+    else if(url.startsWith("/calendar/events/")&&method==="PATCH"){const id=decodeURIComponent(url.slice("/calendar/events/".length));const index=events.findIndex(event=>event.id===id);const{revision,...input}=body as any;assert.equal(revision,events[index].revision);events[index]={...input,attendees:input.attendees.map((email:string)=>({email})),id,source:"local",revision:revision+1,updatedAt:2};result=events[index];}
+    else if(url.startsWith("/calendar/events/")&&method==="DELETE"){const id=decodeURIComponent(url.slice("/calendar/events/".length));const index=events.findIndex(event=>event.id===id);assert.equal((body as any).revision,events[index].revision);events.splice(index,1);result={ok:true};}
     else if(url==="/state")result={...state,csrf:"synthetic"};else if(url==="/sync")result={errors:[]};
     else throw new Error(`Unexpected synthetic request ${method} ${url}`);
     return result as T;
@@ -231,11 +242,12 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
   const field=(text:string)=>{const label=[...container.querySelectorAll("label")].find(label=>label.childNodes[0]?.textContent===text);assert.ok(label,`field ${text}`);return label.querySelector<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>("input,textarea,select")!;};
   const fill=async(text:string,value:string)=>{const input=field(text);await act(async()=>{Object.getOwnPropertyDescriptor(input.tagName==="TEXTAREA"?dom.window.HTMLTextAreaElement.prototype:input.tagName==="SELECT"?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new dom.window.Event(input.tagName==="SELECT"?"change":"input",{bubbles:true}));});};
   const submit=async()=>act(async()=>(container.querySelector(".dialog form") || container.querySelector("form"))!.dispatchEvent(new dom.window.Event("submit",{bubbles:true,cancelable:true})));
-  return{container,state,workspace,grants,notices,requests,opened,confirmations,confirm:(value:boolean)=>{confirmed=value;},
+  return{container,state,workspace,grants,events,google,syncEvents:(value:CalendarEvent[])=>{syncEvents=value;},failEvents:(value:boolean)=>{eventFailure=value;},notices,requests,opened,confirmations,confirm:(value:boolean)=>{confirmed=value;},
     get work(){return currentWork!;},heldReads,
+    holdEventSave:()=>{eventSave=new Promise<void>(resolve=>{releaseEventSave=resolve;});return ()=>releaseEventSave();},
     holdWorkspace:()=>{holdReads=true;},
     configureProvider:()=>{configuredProvider=true;},
-    holdPreparation:(lost=false)=>{lostPreparation=lost;preparation=new Promise<void>(resolve=>{settlePreparation=resolve;});return ()=>settlePreparation();},button,click,field,fill,submit,render,dom,setMode:(value:typeof mode)=>{mode=value;},filter:async(value:string)=>{accountFilter=value;await render();},enable:()=>{enabled=true;},fail:()=>{failure=true;},failMcp:()=>{mcpPatchFails=true;},failRefresh:(value:boolean)=>{refreshFailure=value;},privacy:async()=>{privacy=true;await render();},async close(){await act(async()=>root.unmount());await act(async()=>{heldReads.forEach(read=>read.release());});dom.window.close();globalThis.fetch=previousFetch;for(const[key,descriptor]of old){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}}};
+    holdPreparation:(lost=false)=>{lostPreparation=lost;preparation=new Promise<void>(resolve=>{settlePreparation=resolve;});return ()=>settlePreparation();},button,click,field,fill,submit,render,dom,setMode:(value:typeof mode)=>{mode=value;},filter:async(value:string)=>{accountFilter=value;await render();},enable:()=>{enabled=true;},fail:()=>{failure=true;},failMcp:()=>{mcpPatchFails=true;},failRefresh:(value:boolean)=>{refreshFailure=value;},privacy:async()=>{privacy=true;await render();},async close(){await act(async()=>{releaseEventSave();});await act(async()=>root.unmount());await act(async()=>{heldReads.forEach(read=>read.release());});dom.window.close();globalThis.fetch=previousFetch;for(const[key,descriptor]of old){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}}};
 }
 
 test("real App launches on the manual action screen without selecting or reading hidden Inbox mail",async()=>{const ui=await mount("actions",true);try{assert.equal(ui.container.querySelector("h1")?.textContent,"Today");assert.equal(ui.container.querySelector(".row"),null);assert.ok(ui.container.textContent?.includes("open tasks"));assert.equal(ui.requests.some(request=>request.method==="PATCH"),false);}finally{await ui.close();}});
@@ -808,7 +820,7 @@ test("templates keep source subjects out of private text and attributes and expl
  }finally{await ui.close();}
 });
 
-for(const [mode,purpose] of [["actions","open tasks"],["calendar","Follow-ups, deadlines and snoozed mail"],["agents","Review changes before they run"]] as const)test(`${mode} explains its purpose`,async()=>{
+for(const [mode,purpose] of [["actions","open tasks"],["calendar","Events, tracked work, follow-ups and snoozed mail"],["agents","Review changes before they run"]] as const)test(`${mode} explains its purpose`,async()=>{
  const ui=await mount(mode);try{assert.ok(ui.container.textContent?.includes(purpose));assert.equal(ui.requests.some(request=>request.method!=="GET"),false);}finally{await ui.close();}
 });
 
@@ -874,3 +886,219 @@ test("a project task starts with its project and source, while private email row
     assert.equal(ui.workspace.commitments[0].status, "needs-work");
   } finally { await ui.close(); }
 });
+
+const eventMonth=()=>{const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;};
+const eventForm=(ui:Awaited<ReturnType<typeof mount>>)=>ui.container.querySelector<HTMLFormElement>("form.event-form")!;
+const saveEventForm=async(ui:Awaited<ReturnType<typeof mount>>)=>act(async()=>eventForm(ui).dispatchEvent(new ui.dom.window.Event("submit",{bubbles:true,cancelable:true})));
+
+test("calendar creates an Emc² event, shows it in the grid and day list, and edits or deletes it from the right-hand pane",async()=>{
+ const ui=await mount("calendar");try{
+  const day=`${eventMonth()}-15`;
+  await ui.click(ui.button("New event"));
+  assert.ok(ui.container.querySelector('[role="dialog"][aria-label="New event"]'));
+  await ui.fill("Title","Design review");await ui.fill("Start date",day);await ui.fill("Start time","10:00");await ui.fill("End time","11:00");
+  await ui.fill("Attendees","One <one@example.test>, two@example.test");await ui.fill("Location","Room 4");await ui.fill("Meet link","https://meet.example.test/abc");
+  await ui.fill("Notes","Bring the numbers");await ui.fill("Account","a");
+  await saveEventForm(ui);
+  const post=ui.requests.find(request=>request.method==="POST"&&request.url==="/calendar/events")!;
+  assert.match(post.body.id,/^[0-9a-f-]{36}$/);
+  assert.deepEqual({...post.body,id:undefined},{id:undefined,title:"Design review",start:new Date(`${day}T10:00`).toISOString(),end:new Date(`${day}T11:00`).toISOString(),allDay:false,attendees:["one@example.test","two@example.test"],accountId:"a",location:"Room 4",description:"Bring the numbers",meetLink:"https://meet.example.test/abc"});
+  assert.equal(ui.container.querySelector('[role="dialog"]'),null);
+  const detail=()=>ui.container.querySelector<HTMLElement>('[aria-label="Event details"]');
+  assert.ok(detail()?.textContent?.includes("Design review"));assert.equal(ui.dom.window.document.activeElement,detail());
+  assert.equal(detail()!.querySelector("a")!.getAttribute("href"),"https://meet.example.test/abc");assert.equal(detail()!.querySelector("a")!.getAttribute("rel"),"noopener noreferrer");
+  assert.ok(detail()!.textContent!.includes("one@example.test")&&detail()!.textContent!.includes("Room 4")&&detail()!.textContent!.includes("Bring the numbers"));
+  assert.ok(ui.container.textContent?.includes("Event added to your Emc² calendar."));
+  const cell=ui.container.querySelector<HTMLButtonElement>(`button[aria-label="${day}, 1 scheduled"]`)!;
+  assert.ok(cell.querySelector(".calendar-chip")?.textContent?.includes("Design review"));assert.equal(cell.querySelector(".calendar-chips")?.getAttribute("aria-hidden"),"true");
+  await act(async()=>detail()!.dispatchEvent(new ui.dom.window.KeyboardEvent("keydown",{key:"Escape",bubbles:true})));assert.equal(detail(),null,"Escape closes the event pane");
+  await ui.click(cell);const row=ui.container.querySelector<HTMLButtonElement>(".calendar-agenda .calendar-event")!;assert.ok(row.textContent?.includes("Event"));
+  await ui.click(row);assert.equal(row.getAttribute("aria-pressed"),"true");
+  await ui.click(ui.button("Edit event"));
+  assert.equal(ui.field("Title").value,"Design review");assert.equal(ui.field("Attendees").value,"one@example.test, two@example.test");
+  await ui.fill("Title","Moved review");await saveEventForm(ui);
+  const patch=ui.requests.find(request=>request.method==="PATCH"&&request.url.startsWith("/calendar/events/"))!;
+  assert.equal(patch.body.revision,1);assert.equal(patch.body.title,"Moved review");assert.equal(patch.body.id,undefined);
+  assert.ok(detail()?.textContent?.includes("Moved review"));
+  ui.confirm(false);await ui.click(ui.button("Delete event"));
+  assert.equal(ui.requests.some(request=>request.method==="DELETE"),false);assert.ok(detail());
+  ui.confirm(true);await ui.click(ui.button("Delete event"));
+  assert.deepEqual(ui.requests.find(request=>request.method==="DELETE")!.body,{revision:2});
+  assert.equal(detail(),null);assert.equal(ui.events.length,0);assert.ok(ui.container.textContent?.includes("Event deleted."));
+  assert.equal(ui.requests.some(request=>request.url.startsWith("/commitments")),false,"events never create commitments");
+ }finally{await ui.close();}
+});
+
+test("a failed event save keeps the form and retries with the same ID",async()=>{
+ const ui=await mount("calendar");try{
+  await ui.click(ui.button("New event"));await ui.fill("Title","Retry review");
+  ui.failEvents(true);await saveEventForm(ui);
+  assert.ok(ui.container.querySelector('[role="dialog"] [role="alert"]')?.textContent?.includes("Synthetic event failure"));
+  assert.equal(ui.field("Title").value,"Retry review");
+  ui.failEvents(false);await saveEventForm(ui);
+  const posts=ui.requests.filter(request=>request.method==="POST"&&request.url==="/calendar/events");
+  assert.equal(posts.length,2);assert.equal(posts[0].body.id,posts[1].body.id);assert.equal(ui.events.length,1);
+  for(const[patch,message]of[[{"End time":"00:00","End date":`${eventMonth()}-01`},"The event must end after it starts."],[{"Meet link":"http://meet.example.test"},"Meeting links must start with https://."]] as const){
+   await ui.click(ui.button("Edit event"));for(const[name,value]of Object.entries(patch))await ui.fill(name,value);
+   const writes=ui.requests.length;await saveEventForm(ui);
+   assert.equal(ui.container.querySelector('[role="dialog"] [role="alert"]')?.textContent,message);assert.equal(ui.requests.length,writes,"invalid input is not sent");
+   await ui.click(ui.button("Cancel"));
+  }
+ }finally{await ui.close();}
+});
+
+test("calendar events follow the account filter and hide titles, places and attendees in privacy mode",async()=>{
+ const ui=await mount("calendar");try{
+  const day=`${eventMonth()}-12`,start=new Date(`${day}T09:00`).toISOString(),end=new Date(`${day}T09:30`).toISOString();
+  const base={source:"local" as const,start,end,allDay:false,revision:1,updatedAt:1};
+  ui.events.push({...base,id:"mine",title:"Private Reader sync",accountId:"a",location:"Private Reader office",attendees:[{email:"reader@example.com"},{email:"guest@example.test"}],meetLink:"https://meet.example.test/reader@example.com"},
+   {...base,id:"other",title:"Other account sync",accountId:"b",attendees:[]},{...base,id:"local",title:"Unassigned planning",attendees:[]});
+  await ui.click(ui.button("Refresh workspace"));await ui.filter("a");
+  const cell=()=>ui.container.querySelector<HTMLButtonElement>(`button[aria-label="${day}, 2 scheduled"]`)!;
+  await ui.click(cell());assert.ok(ui.container.textContent?.includes("Unassigned planning"));assert.ok(!ui.container.textContent?.includes("Other account sync"));
+  await ui.privacy();
+  assert.deepEqual([...cell().querySelectorAll(".calendar-chip")].map(chip=>chip.textContent?.replace(/^.*?(Event)$/,"$1")),["Event","Event"]);
+  await ui.click([...ui.container.querySelectorAll<HTMLButtonElement>(".calendar-agenda .calendar-event")].find(row=>!row.textContent?.includes("Unassigned"))!);
+  const detail=ui.container.querySelector<HTMLElement>('[aria-label="Event details"]')!;
+  for(const secret of ["Private Reader","reader@example.com","guest@example.test"])assert.ok(!ui.container.innerHTML.includes(secret),secret);
+  assert.equal(detail.querySelector("a"),null);assert.ok(detail.textContent?.includes("Link hidden while personal information is hidden"));
+  await ui.click(ui.button("Edit event"));assert.equal(ui.field("Title").value,"");assert.equal(ui.field("Attendees").value,"");
+  assert.ok(!ui.container.querySelector('[role="dialog"]')!.innerHTML.includes("guest@example.test"));
+ }finally{await ui.close();}
+});
+
+
+test("Google Calendar stays opt-in, syncs explicitly, displays read-only remote events and labels stale/consent states",async()=>{
+ const ui=await mount("calendar");try{
+  ui.state.googleConfigured=true;await ui.render();
+  const connection=()=>ui.container.querySelector<HTMLElement>('[aria-label="Google Calendar account 2"]')!;
+  assert.ok(connection().textContent?.includes("Not connected"));
+  const connect=connection().querySelector<HTMLAnchorElement>("a")!;
+  assert.equal(connect.getAttribute("href"),"/api/oauth/google?calendar=1&accountId=b");
+  assert.equal(ui.requests.some(request=>request.method!=="GET"),false,"opening Calendar never starts consent or provider sync");
+  const day=`${eventMonth()}-15`;
+  const remote:CalendarEvent={id:"google:remote",source:"google",title:"Private Reader review",accountId:"b",calendarId:"primary",calendarName:"Private Reader calendar",start:day,end:`${eventMonth()}-16`,allDay:true,attendees:[{email:"guest@example.test"}],meetLink:"https://meet.example.test/reader@example.com",revision:1,updatedAt:1};
+  ui.google.push({accountId:"b",status:"connected",calendars:[{id:"primary",name:"Private Reader calendar",selected:true}],selectedIds:["primary"],stale:true,syncedAt:0});
+  ui.syncEvents([remote]);await ui.click(ui.button("Refresh workspace"));
+  assert.ok(connection().textContent?.includes("No synced events for this month."));
+  assert.equal(ui.events.length,0);await ui.click(ui.button("Sync"));
+  const sync=ui.requests.filter(request=>request.url.endsWith("/sync"));assert.equal(sync.length,1);assert.equal(sync[0].method,"POST");
+  assert.equal(sync[0].url,"/calendar/google/b/sync");assert.ok(sync[0].body.from&&sync[0].body.to);
+  const cell=ui.container.querySelector<HTMLButtonElement>(`button[aria-label="${day}, 1 scheduled"]`)!;assert.match(cell.textContent!,/Private Reader review/);
+  await ui.click(cell);await ui.click(ui.container.querySelector<HTMLButtonElement>(".calendar-agenda .calendar-event")!);
+  const detail=()=>ui.container.querySelector<HTMLElement>('[aria-label="Event details"]')!;
+  assert.ok(detail().textContent?.includes("Google Calendar"));assert.ok(detail().textContent?.includes("Private Reader calendar"));assert.ok(detail().textContent?.includes("Read-only in Emc²"));
+  assert.equal([...detail().querySelectorAll("button")].some(button=>/Edit event|Delete event/.test(button.textContent!)),false);
+  await ui.click(ui.button("Back to calendar"));await ui.click(ui.button("Agenda"));assert.ok(ui.container.querySelector(".calendar-agenda")?.textContent?.includes("Private Reader review"));
+  await ui.filter("a");assert.equal(ui.container.querySelector(".calendar-agenda .calendar-event"),null);assert.equal(ui.container.querySelector(".google-calendar"),null);
+  await ui.filter("all");await ui.privacy();assert.ok(!ui.container.innerHTML.includes("Private Reader"));assert.ok(!ui.container.innerHTML.includes("guest@example.test"));
+  const status=ui.google[0];status.stale=true;status.error="sync-failed";await ui.click(ui.button("Refresh workspace"));
+  assert.match(connection().textContent!,/Cached Google events are stale/);assert.match(connection().textContent!,/Sync failed/);
+  status.status="api-disabled";status.error="api-disabled";await ui.click(ui.button("Refresh workspace"));assert.match(connection().textContent!,/Enable Google Calendar API.*then reconnect/);
+  assert.equal(connection().querySelector("button"),null);assert.match(connection().querySelector("a")!.textContent!,/Reconnect/);
+  status.status="needs-consent";status.error="needs-consent";await ui.click(ui.button("Refresh workspace"));assert.match(connection().textContent!,/grant both calendar permissions/);
+  assert.equal(ui.requests.filter(request=>request.url.endsWith("/sync")).length,1);
+  status.status="connected";delete status.error;await ui.click(ui.button("Refresh workspace"));
+  await ui.click(connection().querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+  assert.deepEqual(ui.requests.findLast(request=>request.method==="PATCH")?.body,{selectedIds:[]});
+  assert.equal(ui.requests.filter(request=>request.url.endsWith("/sync")).length,1,"changing selection never contacts Google");
+  ui.syncEvents([]);await ui.click(ui.button("Sync"));assert.equal(ui.container.querySelector(".calendar-agenda .calendar-event"),null,"remote deletion disappears after replacement");
+ }finally{await ui.close();}
+});
+
+
+const sidebarButton = (ui: Awaited<ReturnType<typeof mount>>, name: string) => {
+ const control = [...ui.container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find(button => button.textContent?.trim().startsWith(name));
+ assert.ok(control, `sidebar ${name}`); return control;
+};
+
+for (const caller of ["Calendar", "Schedule meeting"] as const) test(`${caller} freezes pending event inputs, guards closure and navigation, and retains the identical retry`, async () => {
+ const ui = await mount("actions", true);
+ try {
+  if (caller === "Calendar") {
+   await ui.click(sidebarButton(ui, "Calendar")); await ui.click(ui.button("New event"));
+  } else {
+   await ui.click(sidebarButton(ui, "Inbox"));
+   await act(async () => document.getElementById("mail-in-a")!.dispatchEvent(new ui.dom.window.MouseEvent("dblclick", { bubbles: true })));
+   await ui.click(ui.button("Schedule meeting"));
+  }
+  await ui.fill("Title", "Submitted review"); await ui.fill("Location", "Original room");
+  await ui.fill("Notes", "Original notes"); await ui.fill("Attendees", "guest@example.test");
+  const form = eventForm(ui), dialog = form.closest('[role="dialog"]')!;
+  const controls = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select")];
+  const values = () => controls.map(control => ({ value: control.value, checked: "checked" in control ? control.checked : undefined }));
+  const original = values();
+  let release = ui.holdEventSave(); ui.failEvents(true); await saveEventForm(ui);
+  const posts = () => ui.requests.filter(request => request.url === "/calendar/events" && request.method === "POST");
+  assert.equal(posts().length, 1, "the real caller reached its delayed write");
+  for (const control of controls) assert.equal(control.matches(":disabled"), true, `${control.closest("label")?.textContent} must reject late edits`);
+  await act(async () => ui.button("Close dialog").focus());
+  for (const control of controls) { await act(async () => control.focus()); assert.equal(document.activeElement, ui.button("Close dialog")); }
+  await ui.click(form.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+  await ui.click(ui.button("Cancel")); await ui.click(ui.button("Close dialog"));
+  await act(async () => window.dispatchEvent(new ui.dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await ui.click(sidebarButton(ui, caller === "Calendar" ? "Inbox" : "Calendar"));
+  assert.equal(eventForm(ui), form, "pending close and navigation cannot discard the form");
+  assert.deepEqual(values(), original);
+  await saveEventForm(ui); assert.equal(posts().length, 1, "pending resubmit cannot overlap");
+  await act(async () => release());
+  assert.ok(dialog.querySelector('[role="alert"]'), "failed save leaves the editor open");
+  assert.equal(eventForm(ui), form); assert.deepEqual(values(), original);
+  for (const control of controls) assert.equal(control.matches(":disabled"), false, "failure unlocks the retained input");
+  ui.failEvents(false); release = ui.holdEventSave(); await saveEventForm(ui);
+  assert.equal(posts().length, 2); assert.deepEqual(posts()[1].body, posts()[0].body, "retry retains payload and request ID");
+  await act(async () => release());
+  assert.equal(ui.container.querySelector('[role="dialog"]'), null); assert.equal(ui.events.length, 1);
+  assert.equal(ui.events[0].title, "Submitted review"); assert.equal(ui.events[0].description, "Original notes");
+  assert.equal(ui.requests.some(request => request.url.includes("/send") || request.url.includes("/drafts")), false);
+ } finally { await ui.close(); }
+});
+
+// JSDOM has no media layout. Apply the actual narrow-pane hiding rule and model
+// the browser refusing focus inside display:none ancestors. This is synthetic.
+function narrowCalendarFocus(ui: Awaited<ReturnType<typeof mount>>) {
+ const css = readFileSync(new URL("./styles/work.css", import.meta.url), "utf8");
+ const narrow = css.match(/@media \(max-width: 1000px\) \{([^}]+\}[^}]+\})/)!;
+ assert.ok(narrow, "the documented narrow Calendar layout still exists");
+ const hiding = narrow[1].match(/([^{}]+)\{ display: none; \}/)!;
+ assert.ok(hiding); assert.match(hiding[1], /\.work-layout\.has-selection:not\(\.today-layout\) \.work-main/);
+ const style = document.createElement("style"); style.textContent = `${hiding[1]} { display: none; }`; document.head.append(style);
+ const prototype = ui.dom.window.HTMLElement.prototype, focus = prototype.focus;
+ prototype.focus = function(options?: FocusOptions) {
+  for (let node: HTMLElement | null = this; node; node = node.parentElement)
+   if (ui.dom.window.getComputedStyle(node).display === "none") return;
+  focus.call(this, options);
+ };
+ return () => { prototype.focus = focus; style.remove(); };
+}
+
+for (const entry of ["event", "commitment", "snoozed"] as const) for (const exit of ["Back", "Escape"] as const) for (const source of entry === "snoozed" ? [false] : [false, true])
+ test(`narrow Calendar ${entry} ${exit} ${source ? "source return" : "pane close"} returns focus after the origin renders`, async () => {
+  const ui = await mount("actions", true), restore = narrowCalendarFocus(ui);
+  try {
+   const day = new Date(), date = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,"0")}-${String(day.getDate()).padStart(2,"0")}`;
+   ui.events.push({ id: "focus-event", source: "local", title: "Focus event", start: date, end: date, allDay: false,
+    attendees: [], revision: 1, updatedAt: 1, accountId: "a", sourceMailId: "in-a" });
+   // Timed event uses real instants on today's local day.
+   ui.events[0].start = new Date(`${date}T09:00`).toISOString(); ui.events[0].end = new Date(`${date}T09:30`).toISOString();
+   ui.workspace.commitments.push({ id: "focus-task", accountId: "a", sourceMailId: "in-a", text: "Focus task", reason: "Synthetic", status: "needs-work", evidenceMailIds: ["in-a"], revision: 1, updatedAt: 1, history: [] });
+   ui.state.messages[0].snoozedUntil = Date.now() + 60000;
+   await ui.click(sidebarButton(ui, "Calendar")); await ui.click(ui.button("Refresh workspace")); await ui.click(ui.button("Agenda"));
+   const origin = [...ui.container.querySelectorAll<HTMLButtonElement>(".calendar-agenda button")].find(button => button.textContent?.includes(entry === "event" ? "Focus event" : entry === "commitment" ? "Focus task" : "Snoozed"))!;
+   assert.ok(origin); await act(async () => origin.focus()); await ui.click(origin);
+   assert.equal(ui.dom.window.getComputedStyle(origin.closest(".work-main")!).display, "none", "fixture follows the actual selected-pane class");
+   const pane = () => ui.container.querySelector<HTMLElement>(entry === "event" ? '[aria-label="Event details"]' : entry === "commitment" ? '[aria-label="Commitment details"]' : '.calendar-reader .message')!;
+   assert.ok(pane()); assert.ok(document.activeElement === pane(), "selection focuses the destination");
+   if (source) {
+    await ui.click(pane().querySelector<HTMLButtonElement>(".work-source")!);
+    assert.ok(ui.container.querySelector(".calendar-reader .message"));
+    if (exit === "Back") await ui.click(ui.button("Close email"));
+    else await act(async () => ui.container.querySelector(".calendar-reader .message")!.dispatchEvent(new ui.dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    assert.ok(pane()); assert.ok(document.activeElement === pane(), "source-reader return focuses the remounted destination");
+   }
+   if (exit === "Back") await ui.click(ui.button(entry === "snoozed" ? "Close email" : "Back to calendar"));
+   else await act(async () => pane().dispatchEvent(new ui.dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+   assert.equal(ui.container.querySelector(".work-layout")!.classList.contains("has-selection"), false);
+   assert.ok(document.activeElement === origin, "focus returns only after the origin's pane is visible");
+  } finally { restore(); await ui.close(); }
+ });

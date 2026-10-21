@@ -38,6 +38,7 @@ import { MailFilters } from "./mail/MailFilters";
 import { MailList } from "./mail/MailList";
 import { Workbench } from "./work/Workbench";
 import { QuickTrack } from "./work/QuickTrack";
+import { MeetingDialog } from "./work/EventPanel";
 import { useWorkspace } from "./work/useWorkspace";
 import { openCommitment } from "../shared/commitment-dates";
 import { Reader, ReaderEmpty } from "./mail/Reader";
@@ -93,7 +94,7 @@ export function App() {
   const shortcut = (action: typeof interactionActions[number]["id"]) => shortcutLabel(interaction.shortcuts[action]);
   const [searching, setSearching] = useState(false);
   const settings = page === "settings";
-  const inlineWorkView = view === "actions" || view === "projects";
+  const inlineWorkView = view === "actions" || view === "projects" || view === "calendar";
   const workView = view === "actions" || view === "calendar" || view === "projects" || view === "agents";
   const setSettings = (next: boolean | ((current: boolean) => boolean)) => {
     const value = typeof next === "function" ? next(settings) : next;
@@ -116,6 +117,7 @@ export function App() {
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const sendTask = useRef<Promise<void> | undefined>(undefined);
   const [quickSource, setQuickSource] = useState<string | null>(null);
+  const [meetingMail, setMeetingMail] = useState<Mail | null>(null);
   const [trackingItem, setTrackingItem] = useState<Commitment | undefined>();
   const [trackingDraft, setTrackingDraft] = useState<Partial<Commitment> | undefined>();
   const [trackingSession, setTrackingSession] = useState(0);
@@ -135,7 +137,7 @@ export function App() {
   const [settingsModal, setSettingsModal] = useState(false);
   const [workModal, setWorkModal] = useState(false);
   useEffect(() => { if (updateInstalling) setPalette(false); }, [updateInstalling]);
-  const navigationBlocked = !!(compose || teach || snooze || trashMail || shortcuts || labelMail || connecting || updateInstalling || settingsModal || workModal || quickSource);
+  const navigationBlocked = !!(compose || teach || snooze || trashMail || shortcuts || labelMail || connecting || updateInstalling || settingsModal || workModal || quickSource || meetingMail);
   const navigate = (patch: Partial<MailLocation>, search = false) => {
     if (navigationBlocked) return false;
     navigation.visit(patch, search);
@@ -621,6 +623,9 @@ export function App() {
   const openTracking = (mail: Mail) => {
     if (!navigationBlocked) setQuickSource(mail.id);
   };
+  const openMeeting = (mail: Mail) => {
+    if (!navigationBlocked) setMeetingMail(mail);
+  };
   const closeReader = () => { listFocusPending.current = true; setOpened(false); };
   const startCompose = (reply?: Mail, all = false) => {
     if (!state.accounts.length) {
@@ -674,6 +679,7 @@ export function App() {
     ...(isSnoozed(mail) ? [{ id: "unsnooze", label: "Return to inbox", disabled: busy || syncing, run: () => void changeMessage(mail, "unsnooze") }] : []),
     { id: "trash", label: "Move to Trash", disabled: busy || syncing || !!trashUnavailable(mail), run: () => setTrashMail(mail) },
     { id: "track", label: "Track work", disabled: busy || navigationBlocked, run: () => openTracking(mail) },
+    { id: "meeting", label: "Schedule meeting", disabled: busy || navigationBlocked, run: () => openMeeting(mail) },
     { id: "teach", label: "Teach sorting", key: shortcut("teach"), disabled: busy || syncing, separator: true, run: () => setTeach(mail) },
   ];
   const showMailMenu = (event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>, mail: Mail) => {
@@ -694,7 +700,7 @@ export function App() {
   };
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (settingsModal || workModal || quickSource || updateInstalling || contextMenu || event.defaultPrevented || event.isComposing ||
+      if (settingsModal || workModal || quickSource || meetingMail || updateInstalling || contextMenu || event.defaultPrevented || event.isComposing ||
         event.repeat && !["ArrowUp", "ArrowDown"].includes(event.key)) return;
       const target = event.target;
       if (event.key.toLowerCase() === "k" && !event.altKey && !event.shiftKey &&
@@ -916,6 +922,7 @@ export function App() {
       onUnsnooze={() => void changeMessage(selected, "unsnooze")}
       onPin={() => void changeMessage(selected, selected.pinned ? "unpin" : "pin")}
       onTrack={() => openTracking(selected)}
+      onSchedule={() => openMeeting(selected)}
       onClose={closeReader}
       onPrevious={inlineWorkView ? undefined : () => openReaderMail(previousMail)}
       onNext={inlineWorkView ? undefined : () => openReaderMail(nextMail)}
@@ -925,7 +932,9 @@ export function App() {
   );
   const reader = opened && selected && (
     <Reader
+      state={state}
       mail={selected}
+      onOpenDraft={openCompose}
       provider={selectedAccount?.provider}
       labels={state.labels}
       busy={busy || syncing}
@@ -1289,6 +1298,8 @@ export function App() {
               navigation.visit({ view: "actions", opened: false });
             }} /> : <p role="alert">Source unavailable in cache. Existing saved work remains in Today.</p>}
         </Dialog>}
+        {meetingMail && <MeetingDialog key={meetingMail.id} mail={meetingMail} state={state} api={api} onClose={() => setMeetingMail(null)}
+          onSaved={() => { setMeetingMail(null); pushToast("Meeting added to your Emc² calendar. No invitation was sent.", "success"); }} />}
         {compose && (
           <ComposePanel
             onAttachmentTask={(task) => { attachmentTask.current = task; void task.finally(() => { if (attachmentTask.current === task) attachmentTask.current = undefined; }); }}
@@ -1326,7 +1337,7 @@ export function App() {
                 },
                 send: (draft) => {
                   pushToast("Sending email…", "info");
-                  return api("/send", "POST", draft);
+                  return api("/send", "POST", { ...draft, ...(draft.invitation && session.stored ? { calendarDraft: { id: session.stored.id, revision: session.stored.revision } } : {}) });
                 },
                 complete: () => session.discard(),
                 reload,

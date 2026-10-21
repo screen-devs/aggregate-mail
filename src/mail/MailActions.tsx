@@ -1,6 +1,6 @@
 import type { ComponentType, MouseEvent } from "react";
 import type { Mail } from "../../shared/types";
-import { Archive, Calendar, Check, ChevronDown, ChevronUp, Clock, Close, Inbox, Pin, Reply, Trash } from "../ui/icons";
+import { Archive, Calendar, CalendarPlus, Check, ChevronDown, ChevronUp, Clock, Close, Inbox, Pin, Reply, Trash } from "../ui/icons";
 
 type Icon = ComponentType<{ color?: string; size?: number }>;
 
@@ -31,7 +31,7 @@ function Tool({ label, text = label, title, Icon, disabled, busy, onClick }: {
 export function MailActions({
   mail, opened, reading, busy, syncing, snoozed, trashUnavailable, shortcut,
   onRead, onReply, onArchive, onTrash, onSnooze, onUnsnooze, onClose,
-  onPrevious, onNext, previousDisabled, nextDisabled, onPin, onTrack,
+  onPrevious, onNext, previousDisabled, nextDisabled, onPin, onTrack, onSchedule,
 }: {
   mail: Mail;
   opened: boolean;
@@ -54,6 +54,7 @@ export function MailActions({
   nextDisabled?: boolean;
   onPin?: () => void;
   onTrack?: () => void;
+  onSchedule?: () => void;
 }) {
   const readLabel = reading ? "Marking as read…" : mail.unread ? "Mark as read" : "Read";
   return (
@@ -74,6 +75,7 @@ export function MailActions({
         <Tool label="Reply" title={`Reply (${shortcut("reply")})`} Icon={Reply} disabled={busy} onClick={onReply} />
         <Tool label={readLabel} text="Read" Icon={Check} disabled={mail.direction === "sent" || !mail.unread || reading} busy={reading} onClick={onRead} />
         {onTrack && <Tool label="Track work" text="Track" Icon={Calendar} disabled={busy} onClick={onTrack} />}
+        {onSchedule && <Tool label="Schedule meeting" text="Meeting" Icon={CalendarPlus} disabled={busy} onClick={onSchedule} />}
         {onPin && <Tool label={mail.pinned ? "Unpin email" : "Pin email"} text={mail.pinned ? "Unpin" : "Pin"} title={`${mail.pinned ? "Unpin" : "Pin"} email (local to this app)`} Icon={Pin}
           disabled={busy} onClick={onPin} />}
       </div>

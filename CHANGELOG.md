@@ -16,6 +16,22 @@
 
 - Edit an assistant's allowed accounts and permissions in place. Changes apply to its next request and to pending approvals.
 - Keep selected Today work in the right pane when there is room, even when mail opens in place. Show open undated work on today's date in Calendar.
+
+- Disable event fields during Calendar and Schedule meeting saves; failed saves retain input for retry. Restore Calendar focus after the destination pane renders, including source-reader return and event, task and snoozed-entry Back/Escape paths.
+
+- Add an explicit source-email unlink control before reassigning an uninvited event after account removal; Cancel preserves the saved link. Keep reviewed Google results bound to their original event when selecting another event. Clearing a Meet link now removes it from the saved event and later invitation drafts.
+
+- Skip state materialization when the response has already closed before the handler starts. Keep cancellation during decoding local to that request and preserve live peers.
+
+- Restore MCP/CLI tool discovery with structured invitation validation and retain ordinary mail-content shapes. Allow reviewed RSVP drafts through edit, save and ordinary Send. Keep source-linked events bound to their account, offer Google re-consent while connected, and reconcile unknown Google inserts from the saved operation after local edits without another write.
+
+- Add Offer times in the email reader: save availability in a chosen IANA zone, explicitly check local events and selected Google calendars, and prepare an ordinary reviewed reply. Resume saved checks and recover lost responses with the same identities. Book an agreed slot as one local event after fresh conflict checks. Google free/busy needs separate consent and complete response-window coverage; preparing and booking send nothing.
+
+- Prepare reviewed calendar invitation, update, cancellation and RSVP drafts for ordinary Send. Read bounded incoming calendar messages in the reader. Add explicit Google meeting creation with attendee notifications and Meet requests, plus source-bound own-attendee RSVP. Save unknown Google outcomes for read-only reconciliation and keep created event details reachable without a prior synced window. Agents never send.
+
+- Add optional Google Calendar read sync per Gmail OAuth account. Connect explicitly, choose calendars and Sync the visible month. Remote events share the grid, agenda and detail pane; cached failures stay labeled stale. Local events, reminders and mail keep their existing behavior. Read sync sends no invitations and makes no calendar writes.
+
+- Add Emc² calendar events stored in the encrypted local database. New event and Schedule meeting (from an email, prefilled with its subject and people except you) record title, time or all-day dates, attendees, location, Meet link, notes and account. Events appear in the month grid, day list and agenda beside work, follow-ups and snoozes. Selecting any entry opens it in the right-hand pane, including snoozed mail, instead of switching views. Saving an event sends no invitations.
 - Approving an agent reply now saves it to Drafts and opens it in the composer. Nothing is sent until the user presses Send. Remove the now-unused Allow sending replies switch.
 - Hide account addresses in the composer From list in privacy mode and drop raw image-link placeholders from mail previews.
 - Document required bounded verification on shared Linux hosts, workflow failure cases and artifact-bound installed smoke checks. Keep synthetic, installed and real-account acceptance separate.

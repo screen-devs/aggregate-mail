@@ -36,6 +36,7 @@ export type MailAttachment = { id: string; filename: string; contentType: string
 export type DraftAttachment = { filename: string; contentType: string; content: string };
 export type RuleCondition = { field: "subject" | "body" | "recipient"; contains: string } | { field: "hasAttachment" | "directQuestion" };
 export type DraftContent = {
+  invitation?: import("./invitations").Invitation;
   cc?: string[];
   attachments?: DraftAttachment[];
   to: string;
@@ -47,6 +48,7 @@ export type DraftContent = {
   sendUnknown?: boolean;
 };
 export type Draft = DraftContent & {
+  calendarContext?: { eventId: string; revision: number; sourceMailId?: string; sourceFingerprint?: string };
   id: string;
   accountId: string;
   revision: number;
@@ -123,6 +125,7 @@ export function logoDomain(value: string) {
 }
 export type MailImage = { src: string; alt: string };
 export type Mail = {
+  invitation?: { status: "ok"; invitation: import("./invitations").Invitation } | { status: "invalid" | "unsupported"; reason: string };
   direction?: "received" | "sent";
   inReplyTo?: string;
   attachments?: MailAttachment[];

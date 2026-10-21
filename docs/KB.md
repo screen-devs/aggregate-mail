@@ -810,7 +810,9 @@ History retains at most 4,096 distinct changed IDs before advancing its floor.
 Account/progress metadata is captured with the mail view before decoding yields.
 The response serializes individual records with backpressure and bounded yields;
 the renderer accepts it only after complete JSON parsing.
-Response close cancels only that request's decoding at the next bounded yield
+An already destroyed response returns before creating its cancellation controller
+or starting mail materialization. Response close during decoding cancels only
+that request's decoding at the next bounded yield
 and prevents an abandoned snapshot from being written. Its partially decoded
 output is discarded; shared cold initialization continues for other readers.
 The response-close listener is removed on success, cancellation or failure.
@@ -1086,7 +1088,7 @@ Sources: [reader](../src/mail/Reader.tsx), [styles](../src/styles/reader.css),
 
 [The reader](../src/mail/MessageContent.tsx) loads missing formatting on open, shows cached text during loading or failure and offers one manual retry. Show images sits above the body. No body image element exists until activation; consent resets on closure, message change or privacy activation. Delayed content and image responses cannot reveal another message. Formatted images stay inline without a duplicate gallery. Privacy ranges use the full text and map back to the original text leaves with UTF-16 offsets. This keeps supported sender formatting and image/caption order while masking tokens split across tags or images. Split segments share the whole source token as their reveal key; revealing a full name does not reveal a separate surname. Privacy mode suppresses private link and image destinations while allowing explicit display of other supported images. Scrollbar indicators are hidden by CSS without changing scrollable overflow or input handling.
 
-Reply shows a short preview only when one cached message matches both the draft account and `inReplyTo` message ID. It uses the safe formatted renderer with images disabled and cached plain text as fallback; it does not request provider content or change the outgoing draft. Missing or ambiguous matches show no original. The preview uses the source message's recipient names for privacy masking.
+Reply shows cached plain-text context from the source message supplied when opening the reply. When reopening a draft, it uses the first cached message matching the draft account and `inReplyTo` message ID. A missing match shows no original. The context uses the cached body or preview, does not load images or request provider content, and does not change the outgoing draft. It uses the source message's recipient names for privacy masking.
 
 [Privacy matching](../src/privacy.ts) learns names from optional account display names and the current To/Cc display names tied to connected account addresses. It covers full names, first names and surnames, including one-letter Unicode components, with Unicode-aware boundaries, case/whitespace variation and URL encoding. The opened message's dictionary also protects Gmail label filter options and the label editor. A sender avatar uses a neutral dot when its displayed initial matches a known private name component; ordinary company initials stay visible. Sender-markup splits cannot expose a known name. Hidden bars have no private children, title or accessibility text. Explicit reveal applies to the clicked token; re-enabling privacy clears it. Unknown names that appear only in a body cannot be identified. A name that is also an ordinary word can hide that word while privacy is on. Editable compose fields retain their focus-to-reveal behavior.
 
@@ -1237,3 +1239,260 @@ Reply context uses safe cached text. File drops and file selection share validat
 Notification Preview obeys delivery toggles and shows enabled options. It uses
 synthetic sample text, honors privacy and cannot open a real message.
 See [ADR 0052](adr/0052-v2-workflow-corrections.md).
+
+## Emc² calendar events
+
+`shared/calendar.ts` defines `CalendarEvent`, `eventDays` and `eventTime`.
+`server/calendar.ts` stores events as encrypted `calendarEvent` records and
+mounts authenticated routes under the usual Host, origin, desktop-session and
+CSRF checks:
+
+| Method and path | Request | Result |
+| --- | --- | --- |
+| GET `/api/calendar/events?from&to` | ISO instants, at most 62 days apart | `{ events, google }` local and cached Google events overlapping the range, by start |
+| POST `/api/calendar/events` | Event fields, optional UUID `id` | 201 new event; 200 for an identical replay of the same ID; 409 for different details |
+| PATCH `/api/calendar/events/:id` | Event fields plus current `revision` | Event with revision + 1; 409 when stale or synced |
+| DELETE `/api/calendar/events/:id` | Current `revision` | `{ ok: true }`; 409 when stale or synced |
+
+Fields are `title` (1–300), `start`/`end`, `allDay`, optional `accountId`,
+`location` (300), `description` (5,000), `meetLink` (https only, 2,000),
+`attendees` (≤50 addresses, deduplicated case-insensitively keeping the first
+spelling) and `sourceMailId`. Timed events use ISO instants with an offset.
+All-day events use `YYYY-MM-DD` with an exclusive end. Events last at most 14
+days. A source email must exist and belong to the event's account; an edit may
+keep an unchanged source that has left the cache only with its original account.
+A source always requires a matching account, including when No account is chosen.
+The editor's Unlink source email control clears the source in the form. Saving
+omits `sourceMailId` to unlink it before changing accounts; Cancel keeps the saved
+source. An omitted source or Meet link is cleared rather than inherited by a
+full-form edit. Later invitation drafts use the saved link, including its removal.
+Invited events cannot change accounts, even after unlinking a source.
+Unknown fields are rejected.
+Calendar writes are allowed during mail sync because they touch no mailbox;
+updater quiescence still rejects them with 503.
+
+`src/work/events.ts` converts form fields (local dates and times, inclusive
+all-day last day) to the API shape and rejects skipped daylight-saving times
+instead of shifting them. `meetingFields` builds the Schedule meeting prefill:
+the subject without `Re:`/`Fwd:` prefixes, the sender, To and Cc without any
+connected account address, the email's account and source. `useCalendarEvents`
+loads the visible local month, refreshes on window focus and Refresh, and
+serializes writes, refreshing after each one. New events keep one UUID per form,
+so retrying an uncertain save cannot create a copy.
+
+The shared `EventForm` disables all editable controls while either caller saves.
+Cancel, dialog close and app navigation remain guarded during the request. A
+failed save unlocks the retained inputs; retry keeps the form's event UUID.
+
+`src/work/Calendar.tsx` merges events with deadlines, follow-ups, undated open
+work and active snoozes. `src/work/EventPanel.tsx` holds the shared event form,
+the right-hand detail pane and the Schedule meeting dialog. In the App, Calendar
+opens snoozed mail and sources in its own reading pane (`inlineWorkView`, shared
+with Today and Projects) and enables the Reply, Archive, Snooze and Teach shortcuts there.
+Saving local events sends no invitations. Separate explicit notification and
+reviewed draft actions are described under Phase 3 below.
+See [ADR 0054](adr/0054-emc2-calendar-events.md) for the phase boundaries.
+
+Calendar retains the originating button for events, commitments and snoozed mail.
+Workbench restores focus after the destination renders: the event or commitment
+pane after source-reader return, or the originating row after Back/Escape.
+`src/workbench.test.tsx` exercises these paths through the mounted App. Its narrow
+fixture applies the current CSS hiding selector and models refusal to focus a
+`display:none` ancestor. This synthetic check does not prove native layout or focus.
+
+### Optional Google Calendar read sync
+
+Gmail OAuth accounts can explicitly open
+`/api/oauth/google?calendar=1&accountId=<id>`. Consent requests only
+`calendar.events`, `calendar.calendarlist.readonly` and, for Phase 4,
+`calendar.freebusy` in addition to Gmail, with `include_granted_scopes`. The server binds the
+chosen account to OAuth state and rejects a different signed-in identity. Every
+successful callback, including ordinary Gmail reconnect, recomputes calendar
+event access and a separate free/busy proof from `tokens.scope`; missing or partial
+scope fails closed. Event access alone never proves free/busy permission.
+Each configured Gmail account keeps a Reconnect Google Calendar link even while
+event access is Connected, so missing free/busy consent has a direct recovery path.
+
+`server/google-calendar.ts` uses the installed `googleapis` client. Encrypted
+`googleCalendar` records hold the account's access proof, calendar list, selected
+IDs, sanitized error code and a generation used to reject obsolete fetches.
+No scope string or token is returned to the renderer. `googleCalendarWindow`
+records hold each exact normalized `from`/`to` window, sanitized events, last
+successful sync time and explicit stale/error state. Each account retains at
+most six windows. Successful fetches replace the whole window, including empty
+results, so deletions disappear. Failed or incomplete fetches retain the old
+window and mark it stale. Reconnect, selection changes and account removal
+invalidate pending results. Disconnecting Gmail clears its Google records and
+windows while preserving Emc² events.
+
+| Method and path | Request | Result |
+| --- | --- | --- |
+| GET `/api/calendar/events?from&to` | Same bounded window as local events | Cached events plus `google` account states; no Google request |
+| POST `/api/calendar/google/:accountId/sync` | `{ from, to }` | Explicit provider read; `{ ok }`; inspect refreshed `google` status even when HTTP succeeds |
+| PATCH `/api/calendar/google/:accountId` | `{ selectedIds }`, at most 20 known calendar IDs | Local selection only; invalidates old windows; Sync is still explicit |
+
+The initial Sync reads the calendar catalog and uses up to 20 of Google's selected/primary
+calendars; later choices stay in Emc². Catalog reads allow five pages of 100;
+events allow ten pages of 250 per selected calendar, at most 5,000 total events.
+Repeated page tokens and exceeded limits fail without replacing the cache.
+Requests allow 10 seconds and 2 MiB per response with retries disabled; one
+60-second abort signal also covers token refresh and all pages. Read sync makes
+no event write, invitation, automatic sync or free/busy call.
+
+Provider text is parsed to plain text with a 20,000-character input limit, then
+bounded to title/calendar name 300, location 300, notes 5,000, person name 200
+and email 320 characters. Attendees are limited to 50; IDs and pagination tokens
+to 1,024. Meeting and event links allow HTTPS only, at most 2,000 characters,
+without embedded credentials. Only known error codes reach storage/UI; raw
+provider errors are neither displayed nor logged. Google events keep
+`accountId`, `calendarId` and `remoteId` separately from their hashed display ID.
+Phase 3 uses these exact identities for explicit remote writes described below.
+
+The Google Calendar disclosure shows per-account Not connected, Needs consent,
+Connected and Calendar API disabled states. API-disabled help tells users to
+enable Google Calendar API in their own Cloud project and reconnect. Ordinary
+Refresh, focus and month navigation read only encrypted cache. Sync is a separate
+explicit button. Stale cached events stay visible and labeled. Remote events
+share month/day/agenda and the right pane, use the privacy controls and keep
+read-only event fields. Explicit Phase 3 RSVP is separate. Long events are
+expanded only within the displayed month.
+
+Focused synthetic checks are `server/google-calendar.test.ts`,
+`server/calendar.test.ts`, `src/calendar.test.tsx` and `src/workbench.test.tsx`,
+run serially through the wrapper in CONTRIBUTING. They cover mocked OAuth and
+provider calls, scope loss, account isolation, pagination, encrypted replacement,
+stale failures, selection invalidation, local-event preservation and mounted UI.
+They do not prove native consent handoff, installed behavior, provider access or
+live-account sync.
+
+`src/google-calendar.test.tsx` checks that connected accounts retain their
+account-bound re-consent links. This is synthetic markup proof, not native OAuth.
+
+### Calendar invitations and explicit Google notifications (phase 3)
+
+`server/ical.ts` parses and generates one bounded calendar event without fetching
+remote content. Limits are 128 KiB, 4,096 physical lines, 32,768 bytes per unfolded
+line, 2,048 unfolds and 50 unique attendees. It accepts UTC, all-day exclusive
+ends and unambiguous modern IANA time zones. Recurrence, embedded VTIMEZONE,
+floating, ambiguous and nonexistent times remain unsupported. Calendar MIME is
+cached with mail and rendered as plain text; unsupported messages expose no RSVP.
+
+| Method and path | Request | Result |
+| --- | --- | --- |
+| POST `/api/calendar/events/:id/invitation` | `{ revision, method: "REQUEST" or "CANCEL" }` | Encrypted reviewed draft, replayed for the same event/revision/method |
+| GET `/api/calendar/invitations/:id` | Cached incoming mail ID | Source fingerprint, eligibility and optional unique current Google match |
+| POST `/api/calendar/invitations/:id/reply` | `{ fingerprint, response }` | Local event plus reviewed own-attendee REPLY draft; response is ACCEPTED, TENTATIVE or DECLINED |
+| POST `/api/calendar/invitations/:id/apply` | `{ fingerprint }` | Explicit local CANCEL or REPLY application, bound to identity and sequence |
+| POST `/api/calendar/invitations/:id/google-rsvp` | `{ fingerprint, response, requestId, reconcile? }` | Source-bound Google operation; same uppercase responses as local RSVP |
+| POST `/api/calendar/events/:id/google` | `{ revision, reconcile? }` | Explicit Google insert and attendee notification operation |
+| POST `/api/calendar/google/:accountId/rsvp` | `{ eventId, response, requestId, reconcile? }` | Event-pane own-attendee RSVP; accepted, tentative or declined |
+| GET `/api/calendar/operations?eventId` | Exact event ID | Saved Google status, request/source identity and sanitized result for review |
+
+Local draft preparation saves event, draft and replay record atomically. Stable
+UID and advancing sequence protect update/cancellation ordering. The composer
+fixes calendar details and recipients while allowing body edits. Ordinary Send
+resolves the encrypted draft by ID/revision and rechecks event and source before
+generating MIME. Preparation, agents and reads never send. Unknown-send and
+Sent-copy warnings use the existing compose lifecycle.
+Draft validation reuses the structured codec schema so MCP tool discovery can
+serialize it. REPLY validation identifies its sole responder; Send separately
+checks that attendee against the receiving account. Ordinary recovered content
+omits `invitation` when absent, retaining the existing exact content shape.
+
+Google insert uses deterministic provider and conference request IDs,
+`sendUpdates=all` and `conferenceDataVersion=1`. It retains the local event and
+saves its sanitized remote result in `calendarOperation`. Review created Google
+event opens the shared event details, including the Meet link if returned, even
+with no matching synced window. This does not create a synthetic sync window or
+claim that the separate local event tracks subsequent Google edits. The reviewed
+result is bound to the local source event's ID; selecting a different event in
+the same pane restores that event's details and actions.
+Read-only insert reconciliation uses the saved operation's original account,
+remote ID, marker and retained payload, even after the local title or time changes.
+It preserves the submitted revision and never inserts again. A new submission
+with changed fields or a reassigned account is rejected; account identity and
+consent checks still apply before recovery.
+
+Reader RSVP posts to the invitation endpoint with its fetched source fingerprint.
+The service validates organizer/sender, receiving account's exact attendee,
+sequence and one non-stale cached Google match. It checks fresh provider account,
+UID, organizer, sequence, complete attendee list and one exact self attendee;
+the patch changes only that response and carries `If-Match` with the fresh etag.
+Source validation runs again after provider reads. No aliases are inferred.
+
+Before patching, the encrypted operation stores request ID, response and source
+fingerprint. HTTP response loss retains that request in the mounted controls;
+remount recovers server-saved unknown operations. Reconcile performs a provider
+read only and never inserts or patches. Changed source/identity, missing cache
+or an unconfirmed result can keep an operation unresolved. Reopen the matching
+source and review status; never blindly repeat a notification. Provider writes
+use 10-second requests, 2 MiB response limits and disabled retries. Raw provider
+errors are not returned to the UI.
+
+Focused synthetic checks: `server/invitations.test.ts`,
+`server/calendar-writes.test.ts`, `server/invitation-google.test.ts`,
+`src/invitations.test.tsx` and `src/google-invitations.test.tsx`, plus the existing
+calendar, draft, mail and keyboard checks in the journey map. They cover encrypted
+local HTTP persistence, provider fakes, response loss and mounted paths. They do
+not prove native, installed, OAuth, provider delivery or real-account behavior.
+
+Phase 4 can reuse event/account/calendar/provider IDs, invitation UID/sequence,
+source fingerprints, encrypted reviewed drafts and read-only unknown-operation
+reconciliation. Availability helpers are separate and unchanged. Offer times,
+free/busy integration, automatic booking and Calendar MCP sending are not part
+of Phase 3.
+
+### Offer times (phase 4)
+
+`server/offers.ts` stores availability and checked offers in encrypted
+`availability` and `calendarOffer` records. The reader's Offer times form saves
+working weekdays, same-day hours, meeting length, buffer and a chosen IANA zone.
+Checking requires an explicit local-only choice or selected per-account Google
+calendars. Local-only excludes Google and states that limit. Opening mail or
+resuming a saved check makes no provider request.
+
+| Method and path | Request | Result |
+| --- | --- | --- |
+| GET `/api/calendar/offers?sourceMailId` | Cached source ID | Source fingerprint, saved settings, Google catalog/consent state and same-conversation offers |
+| PUT `/api/calendar/availability` | `AvailabilitySettings` | Validated encrypted settings |
+| POST `/api/calendar/offers/check` | UUID `id`, source ID/fingerprint, inclusive local `firstDay`/`lastDay`, explicit `google` selections | Saved slots and request identity; identical replay returns the saved offer |
+| POST `/api/calendar/offers/:id/draft` | Source ID/fingerprint, selected slot indexes | Ordinary encrypted reply draft, bound to source/account/thread |
+| POST `/api/calendar/offers/:id/book` | Source ID/fingerprint, agreed slot index | One local event after fresh validation; identical replay returns its saved event |
+
+A range covers at most 31 local dates and returns at most 200 future slots.
+Meeting length is 5–480 minutes and buffer is 0–120 minutes. Select at most ten
+Google accounts, twenty calendars per account and fifty calendars total. Each
+selected account needs fresh matching Google identity, free/busy consent and
+complete data for every included calendar. Requests expand the entire window by
+the buffer on both ends. Returned `timeMin` and `timeMax` must identify those exact
+instants; missing, invalid, truncated or mismatched bounds reject the result.
+Requests have a 10-second timeout, disabled retries and a 2 MiB response limit;
+a shared 60-second abort also covers identity and token refresh. Busy periods
+are bounded to 10,000. Any failed read blocks results, never implies free time.
+
+All active, non-declined local events across accounts contribute busy time.
+All-day ends stay exclusive and convert using the chosen zone, including DST
+and date-line offsets. The unchanged availability helper rejects ambiguous or
+nonexistent slots. Up to ten selected times become a plain reviewed reply with
+the zone and a warning that times are not reserved. No public booking page,
+automatic send, reply interpretation or Google write is added.
+
+Rejected checks can explicitly change their inputs. Unconfirmed checks retain
+the UUID and exact input for recovery; persisted checked offers without drafts
+can resume after remount. Unconfirmed draft preparation freezes the selection
+for an identical retry. Saved draft/event identities are reused; sent or removed
+drafts and removed booked events are never recreated. At most 500 offers persist.
+Account removal clears its offers. Availability changes require a new check.
+
+Before booking, revalidate source, conversation, account, settings, Google
+identity and all required busy reads, then check current local events and save
+the event and replay identity atomically. Booking is explicit and local. The
+existing Phase 3 controls separately prepare invitations or notify through
+Google. Event details open in the reader; Calendar retains Edit and Delete.
+
+Focused synthetic checks are `server/offers.test.ts`, `src/offers.test.tsx`,
+`server/google-calendar.test.ts` and `src/availability.test.tsx`, plus affected
+calendar, draft, provider, mail and keyboard regressions in the journey map.
+They cover HTTP persistence, response loss, remount recovery, replay safety,
+privacy and synthetic narrow/focus behavior. They do not prove installed layout,
+physical input, real consent, provider access or delivery.

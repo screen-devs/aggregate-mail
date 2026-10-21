@@ -252,7 +252,9 @@ test("MCP HTTP authentication, tools and shared mail operations", async (t) => {
         assert.equal(grantResponse.status, 201);
         const grant = await grantResponse.json() as { token: string };
         agentToken = grant.token;
-        const tools = (await rpc("tools/list")).result.tools!;
+        const toolListResponse = await rpc("tools/list");
+        assert.ok(toolListResponse.result, JSON.stringify(toolListResponse));
+        const tools = toolListResponse.result.tools!;
         assert.deepEqual(
           tools.map((v) => v.name).sort(),
           [

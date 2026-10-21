@@ -1,3 +1,4 @@
+import { parseICalendar, generateICalendar } from "./ical.js";
 import { google } from "googleapis";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -211,7 +212,10 @@ export async function parse(
     }
     return { id, filename: filename.replace(/[\u0000-\u001f\u007f/\\]/g, "_").slice(0, 255), contentType: /^[\w!#$&^.+-]+\/[\w!#$&^.+-]+$/.test(contentType) ? contentType : "application/octet-stream", size: attachment.size, ...(!valid ? { unavailable: true } : {}) };
   }));
+  const calendars = m.attachments.filter((part) => part.contentType.toLowerCase() === "text/calendar");
+  const invitation = calendars.length > 1 ? { status: "unsupported" as const, reason: "multiple-calendars" } : calendars.length ? calendars[0].content.length > 131072 ? { status: "invalid" as const, reason: "limit" } : parseICalendar(calendars[0].content.toString("utf8")) : undefined;
   return {
+    invitation,
     id: `${a.id}:${remoteId}`,
     accountId: a.id,
     remoteId,
@@ -271,7 +275,7 @@ export const providers: Record<
     thread?: (a: StoredAccount, threadId: string) => Promise<Incoming[]>;
     list: (a: StoredAccount, cached: Map<string, Mail>, onBatch?: (batch: Incoming[]) => void, onWarning?: (warning: SyncFailure) => void, labels?: GmailLabel[]) => Promise<Incoming[]>;
     images: (a: StoredAccount, m: Mail) => Promise<MailImage[]>;
-    content: (a: StoredAccount, m: Mail) => Promise<{ html: string | null; images: MailImage[]; attachments?: MailAttachment[] }>;
+    content: (a: StoredAccount, m: Mail) => Promise<{ html: string | null; images: MailImage[]; attachments?: MailAttachment[]; invitation?: Mail["invitation"] }>;
     update: (
       a: StoredAccount,
       m: Mail,
@@ -421,7 +425,7 @@ export const providers: Record<
       });
       if (!result.data.raw) throw new Error("Email source is unavailable.");
       const parsed = await parse(a, m.remoteId, Buffer.from(result.data.raw, "base64url"), m.unread);
-      return { html: parsed.html ?? null, images: parsed.images!, attachments: parsed.attachments };
+      return { html: parsed.html ?? null, images: parsed.images!, attachments: parsed.attachments, ...(parsed.invitation ? { invitation: parsed.invitation } : {}) };
     },
     async update(a, m, action) {
       if (action === "trash") {
@@ -446,6 +450,7 @@ export const providers: Record<
         text: input.body,
         inReplyTo: input.inReplyTo,
         references: input.references || input.inReplyTo,
+        icalEvent: await calendarMime(a, input),
         attachments: input.attachments?.map((attachment) => ({ ...attachment, content: Buffer.from(attachment.content, "base64") })),
       })
         .compile()
@@ -607,7 +612,7 @@ function imapProvider() {
           const parsed = await parse(a, m.remoteId, result.source, m.unread);
           if (m.messageId && parsed.messageId !== m.messageId)
             throw new Error("Email identity changed. Content was not loaded.");
-          return { html: parsed.html ?? null, images: parsed.images!, attachments: parsed.attachments };
+          return { html: parsed.html ?? null, images: parsed.images!, attachments: parsed.attachments, ...(parsed.invitation ? { invitation: parsed.invitation } : {}) };
         } finally {
           lock.release();
         }
@@ -737,6 +742,7 @@ function imapProvider() {
         text: input.body,
         inReplyTo: input.inReplyTo,
         references: input.references || input.inReplyTo,
+        icalEvent: await calendarMime(a, input),
         attachments: input.attachments?.map((attachment) => ({ ...attachment, content: Buffer.from(attachment.content, "base64") })),
       })
         .compile()
@@ -786,6 +792,7 @@ export const attachmentSchema = z.object({
 export const attachmentsSchema = z.array(attachmentSchema).max(10).refine((attachments) => attachments.reduce((size, attachment) => size + Buffer.from(attachment.content, "base64").length, 0) <= 1048576, "Attachments exceed 1 MiB total");
 export const sendSchema = z.object({
   accountId: z.string(),
+  calendarDraft: z.object({ id: z.uuid(), revision: z.number().int().min(1) }).strict().optional(),
   to: z.email().max(320),
   cc: z.array(z.email().max(320)).max(100).optional(),
   attachments: attachmentsSchema.optional(),
@@ -811,3 +818,27 @@ export const sendSchema = z.object({
   threadId: z.string().max(100).optional(),
 }).refine((input) => Buffer.byteLength(JSON.stringify(input), "utf8") <= 1900000, "Message exceeds the request size limit");
 export type SendInput = z.infer<typeof sendSchema>;
+
+// Resolve encrypted, reviewed metadata instead of accepting calendar text from a send caller.
+export async function calendarMime(account: StoredAccount, input: SendInput) {
+  if (!input.calendarDraft) return undefined;
+  const { get } = await import("./store.js");
+  const draft = get("draft", input.calendarDraft.id);
+  if (!draft || draft.accountId !== account.id || draft.revision !== input.calendarDraft.revision || !draft.sendUnknown || !draft.invitation ||
+      draft.to !== input.to || !isDeepStrictEqual(draft.cc || [], input.cc || []) || draft.subject !== input.subject || draft.body !== input.body)
+    throw new Error("Invitation draft changed. Recover the saved draft before sending.");
+  const context = draft.calendarContext;
+  const event = context && get("calendarEvent", context.eventId);
+  if (!context || !event || event.accountId !== account.id || event.revision !== context.revision || event.sequence !== draft.invitation.sequence) throw new Error("Calendar event changed. Review it before sending this draft.");
+  if (context.sourceMailId) {
+    const mail = get("mail", context.sourceMailId);
+    const fingerprint = mail && createHash("sha256").update(JSON.stringify([mail.id, mail.accountId, mail.remoteId, mail.messageId, mail.address, mail.invitation])).digest("hex");
+    if (!mail || mail.accountId !== account.id || fingerprint !== context.sourceFingerprint) throw new Error("Invitation source changed. Reopen it before replying.");
+  }
+  if (!isDeepStrictEqual(draft.attachments || [], input.attachments || [])) throw new Error("Invitation attachments changed. Recover the draft before sending.");
+  const invitation = draft.invitation;
+  const own = account.email.toLowerCase();
+  if (invitation.method === "REPLY" ? invitation.attendees.length !== 1 || invitation.attendees[0].email.toLowerCase() !== own : invitation.organizer.toLowerCase() !== own)
+    throw new Error("The invitation belongs to another account.");
+  return { method: invitation.method, filename: "invitation.ics", content: generateICalendar(invitation, { stamp: new Date().toISOString().replace(/\.\d{3}Z$/, ".000Z"), replyingAttendee: invitation.method === "REPLY" ? account.email : undefined }) };
+}

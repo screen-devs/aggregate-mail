@@ -14,6 +14,10 @@ import { matchesRule } from "../shared/rules.js";
 import { mountWorkspace } from "./workspace.js";
 import { mountAgentProvider } from "./agent-provider.js";
 import { mountDrafts } from "./drafts.js";
+import { calendarScopes, removeGoogleCalendar, saveCalendarAccess } from "./google-calendar.js";
+import { mountInvitations } from "./invitations.js";
+import { mountOffers } from "./offers.js";
+import { mountCalendar } from "./calendar.js";
 import { oauth, providers, presets, validateImap, listGmailLabels, syncError } from "./providers.js";
 import { ImapWatch, sameImapAccount, type ImapWatchFactory } from "./imap-watch.js";
 import { GmailWatch } from "./gmail-watch.js";
@@ -103,6 +107,7 @@ app.use("/api", (req, res, next) => {
     syncing &&
     !["GET", "HEAD"].includes(req.method) &&
     !/^\/accounts\/[^/]+\/drafts(?:\/[^/]+)?\/?$/.test(req.path) &&
+    !req.path.startsWith("/calendar/") &&
     !req.path.startsWith("/send") &&
     req.path !== "/mcp" &&
     !(req.method === "PATCH" && /^\/accounts\/[^/]+$/.test(req.path)) &&
@@ -116,8 +121,12 @@ app.use("/api", (req, res, next) => {
 });
 mountDrafts(app, () => desktopEvents.emit("mail-changed"));
 mountWorkspace(app);
+mountCalendar(app);
+mountOffers(app);
+mountInvitations(app);
 mountAgentProvider(app);
 app.get("/api/state", async (req, res) => {
+  if (res.destroyed) return;
   const controller = new AbortController();
   const cancel = () => controller.abort();
   res.once("close", cancel);
@@ -261,14 +270,19 @@ app.post("/api/logos/sync", mailRequest(async (_req, res) => {
     scanningLogos = false;
   }
 }));
-const oauthStates = new Map<string, number>();
+const oauthStates = new Map<string, { expiry: number; calendar: boolean; accountId?: string }>();
+class AccountConnectionError extends Error {}
 function existingAccount(email: string, provider: Provider) {
   const matches = all("account").filter((a) => a.email.toLowerCase() === email.toLowerCase());
   if (matches.some((a) => a.provider !== provider))
-    throw new Error("This email is already connected using another connection method. Keep that connection, or disconnect it before switching. Disconnecting removes its local mail cache.");
+    throw new AccountConnectionError("This email is already connected using another connection method. Keep that connection, or disconnect it before switching. Disconnecting removes its local mail cache.");
   return matches[0];
 }
-app.get("/api/oauth/google", (_req, res) => {
+app.get("/api/oauth/google", (req, res) => {
+  const calendar = req.query.calendar === "1";
+  const accountId = typeof req.query.accountId === "string" ? req.query.accountId : undefined;
+  const target = accountId ? get("account", accountId) : undefined;
+  if (accountId && (!target || target.provider !== "gmail")) return res.status(400).type("text").send("Choose a connected Gmail account.");
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     if (process.env.MAIL_DESKTOP_TOKEN)
       return res
@@ -281,9 +295,9 @@ app.get("/api/oauth/google", (_req, res) => {
     );
   }
   const state = randomBytes(32).toString("hex");
-  for (const [s, expiry] of oauthStates)
-    if (expiry < Date.now()) oauthStates.delete(s);
-  oauthStates.set(state, Date.now() + 600000);
+  for (const [s, value] of oauthStates)
+    if (value.expiry < Date.now()) oauthStates.delete(s);
+  oauthStates.set(state, { expiry: Date.now() + 600000, calendar, accountId });
   res.cookie("oauth_state", state, {
     httpOnly: true,
     sameSite: "lax",
@@ -295,7 +309,9 @@ app.get("/api/oauth/google", (_req, res) => {
       access_type: "offline",
       prompt: "consent",
       state,
-      scope: ["https://www.googleapis.com/auth/gmail.modify"],
+      include_granted_scopes: true,
+      login_hint: target?.email,
+      scope: ["https://www.googleapis.com/auth/gmail.modify", ...(calendar ? calendarScopes : [])],
     }),
   );
 });
@@ -306,15 +322,17 @@ app.get("/api/oauth/google/callback", mailRequest(async (req, res) => {
     .map((x) => x.trim())
     .find((x) => x.startsWith("oauth_state="))
     ?.slice(12);
-  const expiry = oauthStates.get(state);
+  const consent = oauthStates.get(state);
   oauthStates.delete(state);
   res.clearCookie("oauth_state", { path: "/api/oauth/google/callback" });
-  if (!expiry || expiry < Date.now() || state !== cookie)
+  if (!consent || consent.expiry < Date.now() || state !== cookie)
     return res
       .status(400)
       .send("Invalid or expired sign-in. Return to the app and try again.");
+  let safeError = "Google connection failed. Reconnect and try again.";
+  const refuse = (message: string): never => { safeError = message; throw new Error(message); };
   try {
-    if (req.query.error) throw new Error("Google sign-in was cancelled.");
+    if (req.query.error) refuse("Google sign-in was cancelled.");
     const code = z.string().parse(req.query.code);
     const auth = oauth();
     const { tokens } = await auth.getToken(code);
@@ -323,12 +341,12 @@ app.get("/api/oauth/google/callback", mailRequest(async (req, res) => {
       .gmail({ version: "v1", auth })
       .users.getProfile({ userId: "me" });
     const email = z.email().parse(data.emailAddress);
+    const target = consent.accountId ? get("account", consent.accountId) : undefined;
+    if (consent.accountId && (!target || target.email.toLowerCase() !== email.toLowerCase())) refuse("Sign in with the Gmail account you chose in Emc².");
     const old = existingAccount(email, "gmail");
     const refreshToken = tokens.refresh_token || old?.credentials.refreshToken;
     if (!refreshToken)
-      throw new Error(
-        "Google did not return offline access. Reconnect and grant consent.",
-      );
+      refuse("Google did not return offline access. Reconnect and grant consent.");
     const id = old?.id || randomUUID();
     put("account", id, {
       ...old,
@@ -337,6 +355,7 @@ app.get("/api/oauth/google/callback", mailRequest(async (req, res) => {
       provider: "gmail",
       credentials: { refreshToken },
     });
+    saveCalendarAccess(id, tokens.scope, consent.calendar);
     if (!mailIsQuiesced()) gmailWatch?.reconcile(all("account"));
     void requestSync([id], true);
     if (process.env.MAIL_DESKTOP_TOKEN) {
@@ -348,9 +367,9 @@ app.get("/api/oauth/google/callback", mailRequest(async (req, res) => {
         );
     } else res.redirect(`${appUrl}/?connected=1`);
   } catch (error) {
+    if (error instanceof AccountConnectionError) safeError = error.message;
     if (process.env.MAIL_DESKTOP_TOKEN) {
-      const message =
-        error instanceof Error ? error.message : "Google connection failed.";
+      const message = safeError;
       desktopEvents.emit("oauth", message);
       res
         .status(400)
@@ -359,7 +378,7 @@ app.get("/api/oauth/google/callback", mailRequest(async (req, res) => {
       return;
     }
     res.redirect(
-      `${appUrl}/?error=${encodeURIComponent(error instanceof Error ? error.message : "Google connection failed.")}`,
+      `${appUrl}/?error=${encodeURIComponent(safeError)}`,
     );
   }
 }));
@@ -447,6 +466,9 @@ app.delete("/api/accounts/:id", (req, res) => {
       remove("draft", draft.id);
     removeAccountAttachments(req.params.id);
     remove("coverage", req.params.id);
+    removeGoogleCalendar(req.params.id);
+    for (const offer of all("calendarOffer")) if (offer.accountId === req.params.id) remove("calendarOffer", offer.id);
+    for (const operation of all("calendarOperation")) if (operation.accountId === req.params.id) remove("calendarOperation", operation.id);
     for (const rule of all("rule").filter((rule) => rule.accountId === req.params.id)) remove("rule", rule.id);
     for (const proposal of all("proposal").filter((proposal) => proposal.accountId === req.params.id)) remove("proposal", proposal.id);
     for (const grant of all("agent").filter((grant) => grant.accountIds.includes(req.params.id)))
@@ -649,6 +671,7 @@ app.post("/api/messages/:id/content", mailRequest(async (req, res) => {
     throw new Error("Email identity changed. Content was not cached.");
   // Preserve image recovery and mail actions completed during the source fetch.
   const updated = { ...current, html: current.html === undefined ? content.html : current.html,
+    invitation: current.invitation ?? content.invitation,
     images: current.images ?? content.images, attachments: current.attachments ?? content.attachments ?? [] };
   put("mail", mail.id, updated);
   res.json({ html: updated.html, images: updated.images, attachments: updated.attachments });

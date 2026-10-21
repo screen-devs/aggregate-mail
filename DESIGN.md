@@ -61,7 +61,60 @@ Calendar has month and agenda views, with selected-day entries and expandable
 overdue and undated lists. Deadline days never shift with timezone changes.
 Timed follow-ups use local time, appear in Today when due, and leave the deadline
 and completion status unchanged. Use existing theme tokens and native date
-inputs. No external calendar sync or operating-system reminders in V2.
+inputs. No operating-system reminders in V2.
+
+Emc² events share the grid, day list and agenda. Month cells show up to two
+event chips (time and title; "Event" in privacy mode) and a count of other
+entries. New event sits in the calendar toolbar; Schedule meeting sits in the
+opened email's toolbar and context menu. Both use one dialog form with start and
+end date and time or all-day days, attendees, location, Meet link, notes and
+account. Linked events offer Unlink source email; saving applies the unlink and
+Cancel keeps the saved source. For an uninvited event after account removal,
+unlink before choosing another account or No account. Selecting an event,
+commitment or snoozed email opens it in the
+right-hand pane beside the calendar, never as a separate view. Escape or Back to
+calendar closes the pane and returns focus. See [ADR 0054](docs/adr/0054-emc2-calendar-events.md).
+
+Optional Google Calendar controls sit above the calendar. Each Gmail OAuth
+account shows Not connected, Needs consent, Connected or Calendar API disabled.
+Connect and Reconnect open consent only when activated. Sync refreshes the visible
+month; changing month or returning to the app reads the local cache only.
+Calendar choices use labeled checkboxes. Cached failures stay visible in the
+controls and their disclosure summary. Synced events use the same views and
+right-hand pane, with the calendar name and read-only event fields. RSVP uses
+explicit Accept, Maybe and Decline actions that notify the organizer.
+
+Event details offer Prepare invitation draft and Prepare cancellation draft for
+local events. These open the existing composer with fixed calendar details and
+recipients; the body remains editable. Only ordinary Send delivers the draft.
+Create on Google and notify attendees is a separate explicit action for connected
+Gmail accounts. Its saved result has Review created Google event, including when
+no month has been synced. Selecting another event shows that event's details and
+actions. The local event stays separate and editable.
+
+The email reader shows supported incoming calendar requests with the organizer,
+time, location and notes. A unique current Google match offers explicit RSVP
+bound to that receiving account, source fingerprint and own attendee. Local
+Accept, Maybe and Decline remain separate reviewed draft choices. Unsupported
+messages explain the limit without guessing a date or response. Unknown Google
+outcomes retain the submitted request; Check submitted Google action reads the
+provider and never repeats the write. Privacy and keyboard controls follow the
+existing reader, composer and event pane.
+
+Offer times expands inside the reader with working days, hours, meeting length,
+buffer, an explicit IANA zone, date range and calendar checkboxes. Require an
+explicit local-only choice or selected Google calendars. Each included read must
+succeed. Results are bounded and scroll within the compact form. Choose up to ten
+times for an ordinary reviewed reply; nothing is reserved or sent.
+
+A rejected check offers Change rejected check. An unconfirmed check keeps its
+request and inputs for recovery. Resume checked offer restores a persisted check
+without creating another one. Unconfirmed draft preparation freezes its selected
+times. Saved offers expose Book agreed time; booking rechecks conflicts and opens
+the existing detail pane. Escape returns focus to Offer times. Edit and Delete
+remain in Calendar. Calendar names use Redact, event attendees use Address, and
+existing privacy, narrow-pane and keyboard behavior applies. These controls add
+no animation or automatic notification.
 
 Mail lists use the full available width until an email opens. Rows reveal Read,
 Snooze, Reply, Archive, Track work and Trash on hover or keyboard focus, over the

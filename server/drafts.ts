@@ -1,3 +1,6 @@
+import { isDeepStrictEqual } from "node:util";
+import type { Invitation } from "../shared/invitations.js";
+import { generateICalendar, invitationSchema } from "./ical.js";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import { attachmentsSchema } from "./providers.js";
@@ -11,6 +14,13 @@ const draftIdSchema = z.uuid();
 const revisionSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 // Drafts are incomplete text, not send requests. Send validation still happens at /api/send.
 export const contentSchema = z.object({
+  invitation: invitationSchema.refine((value) => {
+    if (value.method === "REPLY" && value.attendees.length !== 1) return false;
+    try {
+      generateICalendar(value, { stamp: "2000-01-01T00:00:00.000Z", replyingAttendee: value.method === "REPLY" ? value.attendees[0].email : undefined });
+      return true;
+    } catch { return false; }
+  }).optional(),
   to: z.string().max(10000),
   cc: z.array(z.string().max(320)).max(100).optional(),
   attachments: attachmentsSchema.optional(),
@@ -50,28 +60,33 @@ export function listDrafts(accountId: string): DraftSummary[] {
         preview: body.replace(/\s+/g, " ").trim().slice(0, 200), attachmentCount: attachments?.length || 0 }));
 }
 export function createDraft(accountId: string, value: unknown): Draft {
+  return transaction(() => createDraftInTransaction(accountId, value));
+}
+// Calendar preparation commits its event, replay receipt and ordinary draft atomically.
+export function createDraftInTransaction(accountId: string, value: unknown, invitation?: Invitation, calendarContext?: Draft["calendarContext"]): Draft {
   const content = contentSchema.parse(value);
-  return transaction(() => {
-    requireAccount(accountId);
-    if (listDrafts(accountId).length >= MAX_DRAFTS_PER_ACCOUNT)
-      throw new DraftError(409, "Draft limit reached. Explicitly delete a draft before creating another.");
-    const draft: Draft = {
-      ...content, id: randomUUID(), accountId, revision: 1,
-      updatedAt: Date.now(), sendUnknown: content.sendUnknown ?? false,
-    };
-    put("draft", draft.id, draft);
-    return draft;
-  });
+  if (content.invitation) throw new DraftError(400, "Prepare calendar drafts from their event or source email.");
+  requireAccount(accountId);
+  if (listDrafts(accountId).length >= MAX_DRAFTS_PER_ACCOUNT)
+    throw new DraftError(409, "Draft limit reached. Explicitly delete a draft before creating another.");
+  const draft: Draft = {
+    ...content, ...(invitation ? { invitation, calendarContext } : {}), id: randomUUID(), accountId, revision: 1,
+    updatedAt: Date.now(), sendUnknown: content.sendUnknown ?? false,
+  };
+  put("draft", draft.id, draft);
+  return draft;
 }
 export function saveDraft(accountId: string, id: string, value: unknown): Draft {
   const { revision, ...content } = saveSchema.parse(value);
   return transaction(() => {
     const current = readDraft(accountId, id);
     if (current.revision !== revision) throw new DraftError(409, "Draft changed. Read it before saving again.");
+    if (!isDeepStrictEqual(current.invitation, content.invitation)) throw new DraftError(409, "Calendar details cannot be changed in the composer. Prepare from the event again.");
+    if (current.invitation && (current.to !== content.to || !isDeepStrictEqual(current.cc, content.cc))) throw new DraftError(409, "Calendar recipients are bound to this reviewed invitation.");
     if (current.sendUnknown && content.sendUnknown === false)
       throw new DraftError(409, "Unknown send status cannot be cleared by editing.");
     const draft: Draft = {
-      ...content, id, accountId, revision: revision + 1,
+      ...content, ...(current.calendarContext ? { calendarContext: current.calendarContext } : {}), id, accountId, revision: revision + 1,
       updatedAt: Date.now(), sendUnknown: current.sendUnknown || content.sendUnknown === true,
     };
     put("draft", id, draft);

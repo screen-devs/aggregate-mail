@@ -136,6 +136,7 @@ export function ComposePanel({
         <p><Redact text={source.sender} /> · {new Date(source.date).toLocaleDateString()}</p>
         <div className="compose-context-body"><Redact text={source.body || source.preview || "No message text in cache."} /></div>
       </aside></MailPrivacy>}
+      {draft.invitation && <p role="status">Review {draft.invitation.method === "REPLY" ? "your calendar response" : draft.invitation.method === "CANCEL" ? "this cancellation" : "this invitation"}. Calendar details and recipients are fixed. Nothing is sent until you press Send.</p>}
       <form
         className={`compose-form${dragging ? " dragging-files" : ""}`}
         onDragOver={(event) => {
@@ -154,7 +155,7 @@ export function ComposePanel({
             <span>From</span>
             <select
               value={draft.accountId}
-              disabled={busy || loadingFiles || progress.phase === "saving" || progress.phase === "error"}
+              disabled={!!draft.invitation || busy || loadingFiles || progress.phase === "saving" || progress.phase === "error"}
               onChange={(e) =>
                 setDraft(changeComposeAccount(draft, e.target.value, preferences))
               }
@@ -172,7 +173,7 @@ export function ComposePanel({
               <input
                 type="email"
                 required
-                disabled={busy || loadingFiles}
+                disabled={!!draft.invitation || busy || loadingFiles}
                 maxLength={10000}
                 value={draft.to}
                 onChange={(e) => setDraft({ ...draft, to: e.target.value })}
@@ -182,7 +183,7 @@ export function ComposePanel({
               aria-label="Add Cc recipients" aria-expanded={false} onClick={() => setShowCc(true)}>Cc</button>}
           </div>
           {ccVisible && <label><span>Cc</span>
-            <input type="email" multiple autoFocus={showCc} disabled={busy || loadingFiles} maxLength={10000}
+            <input type="email" multiple autoFocus={showCc} disabled={!!draft.invitation || busy || loadingFiles} maxLength={10000}
               value={(draft.cc || []).join(", ")}
               onChange={(e) => setDraft({ ...draft, cc: e.target.value.split(",") })} />
           </label>}

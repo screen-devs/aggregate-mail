@@ -48,7 +48,7 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
   let rejectSend!: (error: Error) => void;
   let sendMode: "pending" | "accept" = "pending";
   let deletes = 0;
-  globalThis.fetch = async (input, init) => {
+  const fetchRequest: typeof fetch = async (input, init) => {
     const route = String(input);
     if (route === "/api/sync") return new Response(JSON.stringify({ errors: [] }));
     if (route === "/api/send") {
@@ -73,6 +73,12 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
       throw new Error("Synthetic lost create acknowledgement");
     }
     return response;
+  };
+  let pendingRequests = 0;
+  globalThis.fetch = async (input, init) => {
+    pendingRequests++;
+    try { return await fetchRequest(input, init); }
+    finally { pendingRequests--; }
   };
   const { createRoot } = await import("react-dom/client");
   const { App } = await import("./App");
@@ -263,7 +269,8 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
     assert.equal(sends, 2, "Explicit copies preserve text without sending");
   } finally {
     releaseSave();
-    await act(async () => root.unmount());
+    await settle(() => pendingRequests === 0 && !container.querySelector<HTMLButtonElement>(".compose-send")?.disabled);
+    await act(async () => { root.unmount(); await new Promise<void>((resolve) => setTimeout(resolve, 0)); });
     // Finish pending HTTP reloads before removing React's DOM globals.
     await act(async () => { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); });
     globalThis.fetch = originalFetch;

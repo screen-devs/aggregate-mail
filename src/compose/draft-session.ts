@@ -10,6 +10,7 @@ export type DraftProgress = {
 export function composeContent(value: Compose): Compose {
   return {
     accountId: value.accountId,
+    ...(value.invitation ? { invitation: structuredClone(value.invitation) } : {}),
     ...(value.cc !== undefined ? { cc: value.cc.slice() } : {}),
     ...(value.attachments !== undefined ? { attachments: value.attachments.map((item) => ({ ...item })) } : {}),
     to: value.to,
