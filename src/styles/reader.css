@@ -220,6 +220,7 @@
   margin-left: 2px;
 }
 .formatted-mail-image-placeholder { display: inline-block; max-width: 100%; vertical-align: middle; border-radius: 4px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.formatted-mail-image-status { display: inline-block; margin: 6px 0; color: var(--text-2); font-size: 13px; }
 .mail-actions #trash-unavailable {
   flex: 1;
   min-width: 0;

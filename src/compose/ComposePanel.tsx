@@ -1,36 +1,13 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { Account, Mail } from "../../shared/types";
+import type { Account } from "../../shared/types";
 import { emptyComposePreferences, type ComposePreferences } from "../../shared/mail-features";
 import { Dialog } from "../ui/Dialog";
-import { redactPrivateText } from "../privacy";
-import { MailPrivacy, PrivacyContext, Redact } from "../ui/Privacy";
-import { FormattedMail } from "../mail/FormattedMail";
-import { MessageText } from "../mail/MessageContent";
-import { useContext } from "react";
 import { changeComposeAccount, ComposePreferenceControls } from "./ComposePreferences";
 import type { Compose, DraftProgress } from "./draft-session";
 
 export type { Compose } from "./draft-session";
 export const unknownSendNotice =
   "Send status unknown. This message may already have been sent. Sending again may send a duplicate.";
-
-function OriginalMessage({ mail }: { mail: Mail }) {
-  return <MailPrivacy mail={mail}><OriginalMessageContent mail={mail} /></MailPrivacy>;
-}
-
-function OriginalMessageContent({ mail }: { mail: Mail }) {
-  const { on: privacy, names } = useContext(PrivacyContext);
-  return <section className="compose-original" aria-label="Original message">
-      <div className="compose-original-heading">
-        <strong><Redact text={mail.sender} /></strong>
-        <span><Redact text={mail.address} /></span>
-      </div>
-      <p className="compose-original-subject"><Redact text={mail.subject} /></p>
-      <FormattedMail html={mail.html} showImages={false} privacy={privacy} privateNames={names}
-        renderText={(text, segments) => <Redact text={text} segments={segments} />}
-        redactText={(text) => redactPrivateText(text, names || [])} fallback={<MessageText text={mail.body} />} />
-    </section>;
-}
 
 export async function sendCompose(
   draft: Compose,
@@ -101,7 +78,6 @@ export function ComposePanel({
   progress,
   onSend,
   preferences = emptyComposePreferences,
-  original,
 }: {
   draft: Compose;
   setDraft: (value: Compose) => void;
@@ -114,7 +90,6 @@ export function ComposePanel({
   progress: DraftProgress;
   onSend: () => void;
   preferences?: ComposePreferences;
-  original?: Mail;
 }) {
   return (
     <Dialog
@@ -165,7 +140,6 @@ export function ComposePanel({
             onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
           />
         </label>
-        {draft.inReplyTo && original && <OriginalMessage mail={original} />}
         <textarea
           aria-label="Message body"
           placeholder="Write your message"

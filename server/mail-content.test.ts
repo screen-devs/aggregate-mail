@@ -72,18 +72,6 @@ test("zero dimensions are dropped so hidden preview text reads as one line, not 
   assert.deepEqual(mailStyle("width:0%;max-width:0em;height:24px"), { height: "24px" });
 });
 
-test("compressed preheaders are shown at readable default dimensions", () => {
-  assert.deepEqual(mailStyle("font-size:1px;line-height:1px;height:1px;max-height:2px;color:#123456"), {
-    fontSize: "1px", lineHeight: "1px", height: "1px", maxHeight: "2px", color: "#123456",
-  });
-});
-
-test("small max-heights remain valid image caps", () => {
-  assert.deepEqual(mailStyle("width:120px;height:40px;max-height:2px"), {
-    width: "120px", height: "40px", maxHeight: "2px",
-  });
-});
-
 test("inline style grammar reads Gmail quote insets, any-order borders and centered columns", () => {
   assert.deepEqual(mailStyle("margin:0px 0px 0px 0.8ex;border-left:1px #ccc solid;padding-left:1ex"), {
     margin: "0px 0px 0px 6.4px", borderLeft: "1px solid #ccc", paddingLeft: "8px",

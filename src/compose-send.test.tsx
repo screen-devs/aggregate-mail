@@ -124,7 +124,7 @@ test("editing an unknown draft preserves its warning and the next send guard", a
   let requests = 0;
   const c = client(async () => { requests++; return {}; }, undefined, { ...initial, sendUnknown: true });
   for (const [index, value] of [[0, "synthetic"], [1, "edited@example.com"], [2, "Edited subject"], [3, "Edited body"]] as const) {
-    const fields = panel(c.draft!, () => {}, c.setDraft).props.children.props.children.filter(Boolean);
+    const fields = panel(c.draft!, () => {}, c.setDraft).props.children.props.children;
     const control = index === 3 ? fields[index] : fields[index].props.children[1];
     control.props.onChange({ target: { value } });
     assert.equal(c.draft?.sendUnknown, true);
@@ -140,10 +140,9 @@ test("editing an unknown draft preserves its warning and the next send guard", a
 test("pre-submission form validation never calls send", () => {
   let sends = 0;
   const form = panel({ ...initial, to: "invalid", body: "" }, () => { sends++; }).props.children;
-  const fields = form.props.children.filter(Boolean);
-  assert.equal(fields[1].props.children[1].props.type, "email");
-  assert.equal(fields[1].props.children[1].props.required, true);
-  assert.equal(fields[3].props.required, true);
+  assert.equal(form.props.children[1].props.children[1].props.type, "email");
+  assert.equal(form.props.children[1].props.children[1].props.required, true);
+  assert.equal(form.props.children[3].props.required, true);
   form.props.onSubmit({ preventDefault() {}, currentTarget: { reportValidity: () => false } });
   assert.equal(sends, 0);
 });

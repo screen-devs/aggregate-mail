@@ -65,21 +65,6 @@
   display: flex;
   flex-direction: column;
 }
-.compose-original {
-  max-height: 150px;
-  margin: 8px 0 6px;
-  padding: 10px 12px;
-  overflow: auto;
-  border-left: 2px solid var(--line-2);
-  color: var(--text-3);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-.compose-original-heading { display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.compose-original-heading span, .compose-original-subject { color: var(--text-3); }
-.compose-original-subject { margin: 3px 0 6px; }
-.compose-original .formatted-mail { max-height: none; }
-.compose-original .formatted-mail :is(p, h1, h2, h3, h4, h5, h6) { margin-block: 4px; }
 .compose-form label {
   display: flex;
   align-items: center;

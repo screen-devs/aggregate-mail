@@ -15,7 +15,8 @@ type Props = {
 };
 
 // Parent owns opening-specific consent and text redaction. Hooks: formatted-mail,
-// formatted-mail-fallback, formatted-mail-image and formatted-mail-image-placeholder.
+// formatted-mail-fallback, formatted-mail-image, formatted-mail-image-placeholder,
+// formatted-mail-image-status.
 export function FormattedMail({ html, showImages, renderText, redactText, privacy, privateNames = [], fallbackText = "", fallback }: Props) {
   const nodes = useMemo(() => typeof html === "string" ? parseMailContent(html) : null, [html]);
   const textParts = nodes ? contentParts(nodes) : [];
@@ -35,11 +36,6 @@ export function FormattedMail({ html, showImages, renderText, redactText, privac
     if (tag === "font" && /^[1-7]$/.test(a.size || "")) style.fontSize = [10, 13, 16, 18, 24, 32, 48][Number(a.size) - 1];
     Object.assign(style, legacyAlign(tag, (a.align || "").toLowerCase()));
     Object.assign(style, mailStyle(a.style || ""));
-    if (tag !== "img" && hasText(children)) for (const property of ["fontSize", "lineHeight", "height", "maxHeight"] as const) {
-      const value = style[property];
-      if (typeof value === "string" && (value === "0" || value.endsWith("px") && parseFloat(value) < 6))
-        delete style[property];
-    }
     // Quotes take the app's own inset and bar, so nested replies keep their width.
     if (tag === "blockquote") for (const property of Object.keys(style) as (keyof CSSProperties)[])
       if (/^(margin|padding|border)/.test(property)) delete style[property];
@@ -55,9 +51,9 @@ export function FormattedMail({ html, showImages, renderText, redactText, privac
       if (!showImages) return <ImagePlaceholder key={key} style={style} reason="Image blocked. Use Show images to load it." />;
       const src = imageSource(a.src || "");
       if (privacy && (privateMailLink(a.src || "", redactText) || (src && privateMailLink(src, redactText))))
-        return <ImagePlaceholder key={key} style={style} reason="Image unavailable while personal information is hidden." />;
+        return <span key={key} className="formatted-mail-image-status">Image unavailable while personal information is hidden.</span>;
       return src ? <FormattedImage key={`${key}:${src}`} src={src} alt={redactText(a.alt || "").slice(0, 500)} style={style} /> :
-        <ImagePlaceholder key={key} style={style} reason="Unsupported image." />;
+        <span key={key} className="formatted-mail-image-status">Unsupported image.</span>;
     }
     const props: Record<string, unknown> = { key, style };
     let element = tag === "font" ? "span" : tag === "center" ? "div" : tag;
@@ -101,7 +97,7 @@ export function FormattedMail({ html, showImages, renderText, redactText, privac
 // is a label and tooltip because a small icon cell cannot fit it as text.
 function ImagePlaceholder({ style, reason }: { style: CSSProperties; reason: string }) {
   return <span className="formatted-mail-image-placeholder" role="img" aria-label={reason} title={reason}
-    style={{ width: style.width ?? 24, height: style.height ?? 24, maxHeight: style.maxHeight }} />;
+    style={{ width: style.width ?? 24, height: style.height ?? 24 }} />;
 }
 
 function FormattedImage({ src, alt, style }: { src: string; alt: string; style: CSSProperties }) {
@@ -114,7 +110,9 @@ function FormattedImage({ src, alt, style }: { src: string; alt: string; style: 
       // icons sized only by height keep that height.
       style={{ ...style, maxWidth: "100%", height: style.width || !style.height ? "auto" : style.height }}
       onLoad={() => setStatus("loaded")} onError={() => setStatus("error")} />}
-    {status === "error" && <ImagePlaceholder style={style} reason="Image could not be loaded." />}
+    {status !== "loaded" && <span className="formatted-mail-image-status" role="status">
+      {status === "error" ? "Image could not be loaded." : "Loading image…"}
+    </span>}
   </span>;
 }
 
@@ -135,10 +133,6 @@ const blockTags = new Set("div p br hr h1 h2 h3 h4 h5 h6 blockquote pre ul ol li
 function contentParts(nodes: MailContentNode[]): string[] {
   return nodes.flatMap((node) => typeof node === "string" ? [node] :
     [...contentParts(node.children), ...(blockTags.has(node.tag) ? ["\n"] : [])]);
-}
-
-function hasText(nodes: readonly MailContentNode[]): boolean {
-  return nodes.some((node) => typeof node === "string" ? !!node.trim() : hasText(node.children));
 }
 
 function hasImage(nodes: MailContentNode[]): boolean {
