@@ -38,9 +38,15 @@ rounded:
 A macOS-style working interface across all desktop platforms, in light and dark. A full-height sidebar on the themed window frame sits flush against near-neutral working panes, divided by hairlines. Primary text is white in dark mode and near-black in light mode, with restrained secondary text. A persistent search toolbar spans the working area above each pane’s own title. Grouped Settings controls and consistent curved menus and dialogs. The accent color (blue by default) belongs to current selection, links and switches. Use bordered groups only to distinguish assistant setup, individual proposals and tracked work. Every color comes from the tokens in `src/styles/tokens.css`; the frontmatter lists the dark Black palette.
 
 The confirmed-work experiment opens on Today, with separate Needs
-reply, Needs work and Waiting lists. Each item shows its reason, due date and
-source links. Today keeps a compact commitment summary above the existing email
-reader, with the work list beside it. Source and conversation opening stays in Today
+reply, Needs work and Waiting lists. Each row shows its task, account and scheduled
+dates. Today keeps a compact task bar above the existing email reader, with the
+work list beside it. Reason, evidence and history stay under Details. Projects
+groups tasks, email rows and decisions for a job with the same inline reader.
+Use one compact project navigation/action row and show the project name once.
+Today and Projects use the full list width until work or an email is selected.
+Keep empty Today status groups to a heading and count. Proposed actions retain
+their exact content and explicit review controls in a compact envelope.
+Source and conversation opening stays in the work screen
 and uses the existing mark-read operation. The list stays mounted, preserving
 selection and scroll; Back or close returns focus to the work row. Narrow and
 full-width reading uses one column. Calendar keeps its source/history inspector.
@@ -57,8 +63,10 @@ Timed follow-ups use local time, appear in Today when due, and leave the deadlin
 and completion status unchanged. Use existing theme tokens and native date
 inputs. No external calendar sync or operating-system reminders in V2.
 
-Mail rows reveal Read, Snooze, Reply, Archive, Track work and Trash on hover or
-keyboard focus. Touch layouts place the controls below the row and include their wrapped
+Mail lists use the full available width until an email opens. Rows reveal Read,
+Snooze, Reply, Archive, Track work and Trash on hover or keyboard focus, over the
+row's trailing edge; they never reserve empty space. Touch layouts place the
+controls below the row and include their wrapped
 height in list windowing. Source and recipient text follows existing privacy
 masking; editable private fields reveal only while focused.
 
@@ -186,6 +194,8 @@ and draft-review flow. See [ADR 0048](docs/adr/0048-v2-persistent-navigation.md)
 
 Keep history arrows beside persistent search, with compact headers below.
 Settings owns assistant setup; Agent review owns proposed actions and activity.
+Settings section changes start at the top. Unsaved templates and signatures
+survive section changes and closing Settings for the current app session.
 Use a full mail-style Drafts list and an anchored Snooze menu. Calendar includes
 active snoozes. Keep the sender panel closed by default and avoid duplicate action
 bars on the closed mail list. Preserve accessible labels on icon buttons.

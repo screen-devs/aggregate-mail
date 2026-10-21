@@ -76,6 +76,8 @@ fixtures separate from saved accounts. A read-only fixture cannot prove writes.
 | drafts | New message → enter synthetic recipient/subject/body → Keep draft → Drafts → open draft | Count and row details match; exact content recovers; no send; repeat after restart |
 | reply | Open synthetic mail → Reply → drop a small test file | Original text remains visible; one attachment is added; invalid/oversized drop reports error without replacing text |
 | today | Track work → Needs work → Save → Today → select work | Prefilled source and reason; one saved item; source opens inline; failed save retains input |
+| projects | Choose a synthetic project → open email → close → Add task → save | One compact project header; tasks before emails; sender, subject, account and date readable; email stays in Projects; focus returns to its row; new task belongs to the chosen project |
+| settings | Visit all ten sections → scroll → switch and Back; edit signature → leave Settings → reopen → fail save → retry | Destination starts at the top; unsaved text survives navigation and failure; successful save persists; no clipped controls |
 | calendar | Set a local follow-up; inspect agenda and month; clear reminder | Correct local day/time; deadline remains independent; no duplicate snoozed item |
 | agents | Settings → AI and agents → Manage assistants; Agent review → review queue | Management stays in Settings; review has proposals/activity; removal requires confirmation; revoked permission stays denied |
 | agent-journey | Connect synthetic MCP client → cached read → denied reader-only tracking → explicit tracking grant → create → Today | Correct denial, then exactly one local item and inline source; no mail mutation or send; see `src/agent-journey.test.tsx` |

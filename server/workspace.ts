@@ -409,6 +409,20 @@ export function mountWorkspace(app: express.Express) {
     put("agent", grant.id, grant);
     res.status(201).json(grant);
   });
+  // Access edits apply on the next MCP call; approval rechecks pending proposals against the current grant.
+  router.patch("/agent/grants/:id", (req, res) => {
+    const input = z.object({ name: text.optional(), accountIds: ids.min(1).optional(), tools: z.array(agentTools).min(1).max(20).optional() }).strict().parse(req.body);
+    input.accountIds?.forEach(account);
+    const grant = transaction(() => {
+      const current = get("agent", req.params.id);
+      if (!current)
+        return fail(404, "Assistant not found.");
+      const next = { ...current, ...(input.name ? { name: input.name } : {}), ...(input.accountIds ? { accountIds: [...new Set(input.accountIds)] } : {}), ...(input.tools ? { tools: [...new Set(input.tools)] } : {}) };
+      put("agent", next.id, next);
+      return next;
+    });
+    res.json(grant);
+  });
   router.delete("/agent/grants/:id", (req, res) => {
     transaction(() => {
       remove("agentProvider", req.params.id);

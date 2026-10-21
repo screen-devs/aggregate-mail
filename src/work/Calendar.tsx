@@ -5,14 +5,17 @@ import { deadlineDate, localDate, openCommitment } from "../../shared/commitment
 import { MailPrivacy, Redact } from "../ui/Privacy";
 import { ArrowLeft, ArrowRight } from "../ui/icons";
 
-export type CalendarEntry = { item: Commitment; day: string; kind: "Deadline" | "Follow-up"; at?: number } | { item: Mail; day: string; kind: "Snoozed"; at: number };
+export type CalendarEntry = { item: Commitment; day: string; kind: "Deadline" | "Follow-up" | "No deadline"; at?: number } | { item: Mail; day: string; kind: "Snoozed"; at: number };
 
 export function calendarEntries(items: Commitment[], messages: Mail[] = [], now = Date.now()): CalendarEntry[] {
+  const today = localDate(new Date(now));
   const work: CalendarEntry[] = items.filter(openCommitment).flatMap((item) => {
     const entries: CalendarEntry[] = [];
     const deadline = deadlineDate(item);
     if (deadline) entries.push({ item, day: deadline, kind: "Deadline" });
     if (item.followUpAt !== undefined) entries.push({ item, day: localDate(new Date(item.followUpAt)), kind: "Follow-up", at: item.followUpAt });
+    // Open work without a date stays on today until it is scheduled or closed.
+    if (!entries.length) entries.push({ item, day: today, kind: "No deadline" });
     return entries;
   });
   const snoozed: CalendarEntry[] = messages.filter((mail) => !mail.archived && mail.direction !== "sent" && mail.snoozedUntil !== null && mail.snoozedUntil > now)
@@ -33,8 +36,7 @@ export function Calendar({ items, messages = [], now, onSelect, onOpenMail }: { 
   const [agenda, setAgenda] = useState(false);
   const entries = useMemo(() => calendarEntries(items, messages, now), [items, messages, now]);
   const { offset, days } = monthDays(month);
-  const overdue = entries.filter((entry) => entry.kind === "Deadline" ? entry.day < today : entry.at! < now);
-  const undated = items.filter((item) => openCommitment(item) && !deadlineDate(item) && item.followUpAt === undefined);
+  const overdue = entries.filter((entry) => entry.kind === "Deadline" ? entry.day < today : entry.kind !== "No deadline" && entry.at! < now);
   const move = (delta: number) => {
     const next = new Date(`${month}-01T12:00:00`);
     next.setMonth(next.getMonth() + delta);
@@ -71,8 +73,5 @@ export function Calendar({ items, messages = [], now, onSelect, onOpenMail }: { 
       {entryList(entries.filter((entry) => entry.day === day))}
     </>}
     <details className="calendar-backlog"><summary>Overdue ({overdue.length})</summary>{entryList(overdue)}</details>
-    <details className="calendar-backlog"><summary>Undated ({undated.length})</summary>
-      <ul className="calendar-agenda">{undated.map((item) => <li key={item.id}><button type="button" onClick={() => onSelect(item.id)}><Redact text={item.text} /></button></li>)}</ul>
-    </details>
   </section>;
 }

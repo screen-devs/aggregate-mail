@@ -45,7 +45,7 @@ test("unconfigured Google sign-in is not offered and account onboarding stays se
   const html = settings(false);
   assert.ok(!html.includes('href="/api/oauth/google"'));
   assert.match(html, /Connect account/);
-  assert.match(html, /<details[^>]*><summary>Advanced connection setup<\/summary>/);
+  assert.match(html, /<details[^>]*><summary>Google setup and sorting keys<\/summary>/);
 });
 test("configured Google sign-in is offered", () => {
   assert.match(settings(true), /href="\/api\/oauth\/google"/);

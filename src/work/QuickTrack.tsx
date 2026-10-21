@@ -28,6 +28,7 @@ export function QuickTrack({ mail, work, privateNames, onEdit, onDone }: { mail:
     if (details) form.current?.querySelector<HTMLElement>(privacy.on ? '[role="radio"][aria-checked="true"]' : 'input:not([data-private-field])')?.focus();
   }, [details, privacy.on]);
   const current = target && target !== "new" ? items.find((item) => item.id === target.id) : undefined;
+  const showTitle = privacy.on || items.length <= 1 || target === "new";
   const changed = !!target && target !== "new" && (!current || current.revision !== target.revision);
   const resolved = savedId ? work.workspace.commitments.find((item) => item.id === savedId) : undefined;
   const choose = (item: Commitment | "new" | null) => {
@@ -75,16 +76,16 @@ export function QuickTrack({ mail, work, privateNames, onEdit, onDone }: { mail:
     {savedId ? <>
       {resolved && !work.stale && !work.refreshing ? <><p role="status">{saved ? "Saved" : "Saved and refreshed"}: <Redact text={resolved.text} /> · {trackingStatuses[resolved.status as keyof typeof trackingStatuses] || resolved.status}</p><button type="button" disabled={work.blocked || work.refreshing} onClick={() => onEdit(resolved)}>Open full editor</button></> : <p role="status">Save acknowledged. Refresh saved work before making another change.</p>}
     </> : <>
-      {items.length > 0 && <label>Deliverable<select value={target === "new" ? "new" : target?.id || ""} disabled={work.blocked} onChange={(event) => choose(event.target.value === "new" ? "new" : items.find((item) => item.id === event.target.value) || null)}>
-        <option value="" disabled>Choose a deliverable</option>{items.map((item, index) => <option key={item.id} value={item.id}>Saved deliverable {index + 1} · {item.status}</option>)}<option value="new">New deliverable</option>
+      {items.length > 1 && <label>Deliverable<select value={target === "new" ? "new" : target?.id || ""} disabled={work.blocked} onChange={(event) => choose(event.target.value === "new" ? "new" : items.find((item) => item.id === event.target.value) || null)}>
+        <option value="" disabled>Choose a deliverable</option>{items.map((item, index) => <option key={item.id} value={item.id}>{privacy.on ? `Saved deliverable ${index + 1}` : item.text}</option>)}<option value="new">New deliverable</option>
       </select></label>}
-      {!items.length && !target && <button type="button" disabled={work.blocked || work.refreshing} onClick={() => choose("new")}>New deliverable</button>}
+      {items.length === 1 && (target === "new" || !target) && <button type="button" disabled={work.blocked || work.refreshing} onClick={() => choose(items[0])}>Use saved deliverable</button>}
+      {items.length <= 1 && (!target || target !== "new") && <button type="button" disabled={work.blocked || work.refreshing} onClick={() => choose("new")}>New deliverable</button>}
       {items.length > 1 && <p>Several deliverables use this email. Choose one, or explicitly create another.</p>}
-      <ul className="quick-track-items">{items.map((item, index) => <li key={item.id}>{index + 1}. <Redact text={item.text} /> · {item.status}</li>)}</ul>
       {changed && <p role="alert">This deliverable changed or was removed. Review its current revision before saving. {current && <button type="button" disabled={work.blocked} onClick={() => choose(current)}>Review current revision</button>}</p>}
-      {target && target !== "new" && !openCommitment(target) ? <p>This deliverable is closed. Use the full editor to explicitly reopen it.</p> : <>
+      {target && target !== "new" && !openCommitment(target) ? <p>{(privacy.on || items.length <= 1) && <><Redact text={target.text} /> · </>}{target.status}. Use the full editor to explicitly reopen it.</p> : <>
         {!details && <>
-          <p className="quick-track-subject"><Redact text={title} /></p>
+          {(showTitle || target) && <p className="quick-track-subject">{showTitle && <Redact text={title} />}{target && target !== "new" && <>{showTitle ? " · " : "Current status: "}{trackingStatuses[target.status as keyof typeof trackingStatuses] || target.status}</>}</p>}
           <div className="quick-track-actions" aria-label="Save tracked work">
             {Object.entries(trackingStatuses).map(([id, label]) => <button type="button" className="button" key={id}
               disabled={work.blocked || work.refreshing || !target || changed || !title.trim()}

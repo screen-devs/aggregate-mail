@@ -10,6 +10,8 @@ export function DraftList({ accounts, api, accountFilter, query, refreshKey, act
   refreshKey?: number; active: boolean; onOpen: (draft: Draft) => void;
 }) {
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
@@ -29,9 +31,9 @@ export function DraftList({ accounts, api, accountFilter, query, refreshKey, act
       `/accounts/${encodeURIComponent(account.id)}/drafts`,
     ))).then((lists) => {
       if (!lists.every(Array.isArray)) throw new Error();
-      if (!stopped) setDrafts(lists.flat().sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)));
+      if (!stopped) { setDrafts(lists.flat().sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))); setLoaded(true); setUnavailable(false); }
     }).catch(() => {
-      if (!stopped) setError("Drafts could not be loaded. Try refreshing.");
+      if (!stopped) { setUnavailable(true); setError("Drafts could not be loaded. Try refreshing."); }
     }).finally(() => { if (!stopped) setLoading(false); });
     return () => { stopped = true; };
   }, [accounts, api, attempt, refreshKey, active]);
@@ -52,7 +54,7 @@ export function DraftList({ accounts, api, accountFilter, query, refreshKey, act
       terms.every((term) => [draft.subject, draft.to, ...(draft.cc || []), draft.preview, account.email, account.name].join(" ").toLocaleLowerCase().includes(term));
   });
   return <section className="draft-list" aria-label="Saved drafts" aria-busy={loading || opening}>
-    <div className="draft-list-heading"><span>{loading ? "Loading drafts…" : `${visible.length} ${visible.length === 1 ? "draft" : "drafts"} · Saved on this device`}</span>
+    <div className="draft-list-heading"><span>{loading ? "Loading drafts…" : unavailable ? loaded ? `${visible.length} cached ${visible.length === 1 ? "draft" : "drafts"} · Count unavailable until refresh` : "Draft count unavailable" : `${visible.length} ${visible.length === 1 ? "draft" : "drafts"} · Saved on this device`}</span>
       <button type="button" disabled={loading || opening} onClick={() => setAttempt((value) => value + 1)}>Refresh</button></div>
     {error && <p className="draft-list-error" role="alert">{error}</p>}
     {!loading && !error && !visible.length && <p className="work-empty">{query ? "No matching drafts." : "No saved drafts in this account."}</p>}

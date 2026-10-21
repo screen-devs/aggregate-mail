@@ -67,10 +67,14 @@ test("reply retains original context and file drops reuse attachment validation 
   const draft:Compose={accountId:"a",to:"client@example.test",subject:"Reply",body:"My reply",inReplyTo:"<message>"};
   const source = {id:"mail",accountId:"a",sender:"Client",address:"client@example.test",to:"me@example.test",subject:"Original subject",body:"Please confirm the delivery date.",date:1} as import("../shared/types").Mail;
   let changed:Compose|undefined,task:Promise<void>|undefined,sends=0;
-  const render=(busy=false)=>act(async()=>root.render(<ComposePanel draft={draft} source={source} setDraft={value=>{changed=value;}} accounts={[{id:"a",email:"me@example.test",provider:"imap"}]} busy={busy} onClose={()=>{}} onDiscard={()=>{}} onRetry={()=>{}} onSaveCopy={()=>{}} progress={{phase:"saved",message:"Saved"}} onSend={()=>{sends++;}} onAttachmentTask={value=>{task=value;}}/>));
+  const render=(busy=false)=>act(async()=>root.render(<ComposePanel draft={draft} source={source} setDraft={value=>{changed=value;}} accounts={[{id:"a",email:"me@example.test",provider:"imap"},{id:"b",email:"selected@example.test",provider:"imap"}]} busy={busy} onClose={()=>{}} onDiscard={()=>{}} onRetry={()=>{}} onSaveCopy={()=>{}} progress={{phase:"saved",message:"Saved"}} onSend={()=>{sends++;}} onAttachmentTask={value=>{task=value;}}/>));
   const drop=async(files:File[])=>{const event=new dom.window.Event("drop",{bubbles:true,cancelable:true});Object.defineProperty(event,"dataTransfer",{value:{files,types:["Files"]}});await act(async()=>{document.querySelector('form')!.dispatchEvent(event);await task;});assert.equal(event.defaultPrevented,true);};
   try{
     await render(); assert.match(document.querySelector('[aria-label="Original email"]')!.textContent!,/Please confirm the delivery date/);
+    assert.match(document.querySelector('.compose-format')!.textContent!,/From: me@example.test/);
+    draft.accountId="b";await render();
+    assert.match(document.querySelector('.compose-format')!.textContent!,/From: selected@example.test/);
+    assert.ok(!document.querySelector('.compose-format')!.textContent!.includes('original account'));
     await drop([new dom.window.File(["hello"],"note.txt",{type:"text/plain"})]);
     assert.equal(changed?.body,draft.body);assert.deepEqual(changed?.attachments,[{filename:"note.txt",contentType:"text/plain",content:"aGVsbG8="}]);assert.equal(sends,0);
     changed=undefined; await drop([new dom.window.File(["bad"],"../bad.txt")]);assert.equal(changed,undefined);assert.match(document.querySelector('[role="alert"]')!.textContent!,/safe filenames/);
@@ -97,6 +101,8 @@ test("composer From hides account addresses in privacy mode", async () => {
     await render(true);
     assert.ok(!from().includes("from@example.test"));
     assert.match(from(), /^Account 1/);
+    assert.ok(!document.querySelector('.compose-format')!.innerHTML.includes("from@example.test"));
+    assert.match(document.querySelector('.compose-format')!.textContent!,/From: Account 1/);
     await render(false);
     assert.equal(from(), "from@example.test");
   } finally {

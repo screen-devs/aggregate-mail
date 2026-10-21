@@ -80,6 +80,9 @@ const empty: State = {
 
 export function App() {
   const [state, setState] = useState(empty);
+  const [composeDraft, setComposeDraft] = useState<ComposePreferences>();
+  const [composeSaving, setComposeSaving] = useState(false);
+  const composeSaveLock = useRef(false);
   const navigation = useMailNavigation();
   const { page, settingsSection, view, tab, accountFilter, labelFilter, selectedId, query, opened, readFilter, relevanceFilter, sort } = navigation.location;
   const setSelectedId = (selectedId: string | null) =>
@@ -90,6 +93,7 @@ export function App() {
   const shortcut = (action: typeof interactionActions[number]["id"]) => shortcutLabel(interaction.shortcuts[action]);
   const [searching, setSearching] = useState(false);
   const settings = page === "settings";
+  const inlineWorkView = view === "actions" || view === "projects";
   const workView = view === "actions" || view === "calendar" || view === "projects" || view === "agents";
   const setSettings = (next: boolean | ((current: boolean) => boolean)) => {
     const value = typeof next === "function" ? next(settings) : next;
@@ -239,7 +243,7 @@ export function App() {
   const splitRoom = useMedia("(min-width: 980px)");
   const wide = useMedia("(min-width: 1180px)");
   const wider = useMedia("(min-width: 1440px)");
-  const split = appearance.reading === "split" && splitRoom;
+  const split = appearance.reading === "split" && splitRoom && opened;
   const senderRoom = split ? wider : wide;
   const sidebarShown = sidebarOpen && roomy;
   const [senderPanel, setSenderPanel] = useState(() => localStorage.getItem("sender-panel") === "open");
@@ -352,6 +356,11 @@ export function App() {
     }
     mailCursor.current = data.mailCursor;
     setState((current) => reuseMailState(current, data));
+    setComposeDraft((current) => {
+      if (!current) return current;
+      const signatures = Object.entries(current.signatures).filter(([id]) => data.accounts.some(account => account.id === id));
+      return signatures.length === Object.keys(current.signatures).length ? current : { ...current, signatures: Object.fromEntries(signatures) };
+    });
     setSyncing(data.syncing || syncLock.current);
     setLoaded(true);
     return data;
@@ -727,7 +736,7 @@ export function App() {
       }
       if (target instanceof HTMLElement && target.closest("#sidebar")) return;
       const inbox = !settings && !workView && view !== "drafts";
-      const mailActions = inbox || !settings && view === "actions" && opened && !busy;
+      const mailActions = inbox || !settings && inlineWorkView && opened && !busy;
       if (inbox && ["PageDown", "PageUp"].includes(event.key) &&
         !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
         event.preventDefault();
@@ -820,7 +829,7 @@ export function App() {
       }
       return;
     }
-    if (view === "actions") {
+    if (inlineWorkView) {
       readerRef.current?.parentElement?.scrollTo({ top: 0, behavior: "instant" });
       if (readerFocusPending.current) {
         readerFocusPending.current = false;
@@ -910,8 +919,8 @@ export function App() {
       onPin={() => void changeMessage(selected, selected.pinned ? "unpin" : "pin")}
       onTrack={() => openTracking(selected)}
       onClose={closeReader}
-      onPrevious={view === "actions" ? undefined : () => openReaderMail(previousMail)}
-      onNext={view === "actions" ? undefined : () => openReaderMail(nextMail)}
+      onPrevious={inlineWorkView ? undefined : () => openReaderMail(previousMail)}
+      onNext={inlineWorkView ? undefined : () => openReaderMail(nextMail)}
       previousDisabled={navigationBlocked || !!contextMenu || !previousMail}
       nextDisabled={navigationBlocked || !!contextMenu || !nextMail}
     />
@@ -923,10 +932,9 @@ export function App() {
       labels={state.labels}
       busy={busy || syncing}
       api={api}
-      onOpen={view === "actions" ? openWorkSource : jumpTo}
+      onOpen={inlineWorkView ? openWorkSource : jumpTo}
       onChanged={reload}
       onReplyAll={() => startCompose(selected, true)}
-      onTrack={() => openTracking(selected)}
       onLabels={() => setLabelMail(selected)}
       onMenu={showMailMenu}
       onMenuKey={mailMenuKey}
@@ -1020,9 +1028,10 @@ export function App() {
                   navigate({ page: "mail", ...(settings || workView ? { view: "all", readFilter: "all", relevanceFilter: "all", labelFilter: "all" } : {}), query: value, opened: false, selectedId: null }, true);
                 }} onClear={closeSearch} onCommands={() => setPalette(true)} />
             </PaneHeader>
-            <p hidden={!searching || settings || workView} id="mail-search-help" className="search-help" role={search.error ? "alert" : undefined}>
-              {search.error || `Search cached mail in ${viewNames[view]} within the selected account and filters. Use from:, to:, subject:, body:, account:, is:unread, is:pinned, before:YYYY-MM-DD or after:YYYY-MM-DD. No remote search.`}
-            </p>
+            <div hidden={!searching || settings || workView} className="search-help">
+              <span id="mail-search-help" role={search.error ? "alert" : undefined}>{search.error || `Cached ${viewNames[view]} · current account and filters`}</span>
+              <details><summary>Search help</summary><p>Use from:, to:, subject:, body:, account:, is:unread, is:pinned, before:YYYY-MM-DD or after:YYYY-MM-DD. Search stays on this device.</p></details>
+            </div>
         {settings ? (
           <div className="settings-pane">
             <PaneHeader className="main-head update-reserved" corner={null} maximized={maximized}>
@@ -1050,10 +1059,25 @@ export function App() {
               api={api}
               onConnectAccount={setConnecting}
               onNotice={(text) => pushToast(text, "info")}
+              composeDraft={composeDraft}
+              composeSaving={composeSaving}
+              onComposeDraft={setComposeDraft}
               onComposePreferences={async (value) => {
-                const saved = await api<ComposePreferences>("/compose-preferences", "PUT", value);
-                setState((current) => ({ ...current, composePreferences: saved }));
-                pushToast("Templates and signatures saved.", "success");
+                if (composeSaveLock.current) throw new Error("Compose preferences are already saving.");
+                composeSaveLock.current = true;
+                setComposeSaving(true);
+                try {
+                  const saved = await api<ComposePreferences>("/compose-preferences", "PUT", value);
+                  setState((current) => ({ ...current, composePreferences: saved }));
+                  setComposeDraft((current) => current === value ? undefined : current);
+                  pushToast("Templates and signatures saved.", "success");
+                } catch (error) {
+                  setNotice("Could not save templates and signatures. Your edits are kept. Try again.");
+                  throw error;
+                } finally {
+                  composeSaveLock.current = false;
+                  setComposeSaving(false);
+                }
               }}
               windowSide={windowSide}
               onWindowSide={placeWindowControls}
@@ -1097,8 +1121,8 @@ export function App() {
             <PaneHeader className="main-head update-reserved" corner={null} maximized={maximized}>
               <h1 className="pane-title">{viewNames[view]}</h1><div className="pane-tools">{privacyButton}</div>
             </PaneHeader>
-            <Workbench key={`${view}:${accountFilter}:${trackingSession}`} work={work} initialSource={trackingSource} initialItem={trackingItem} initialDraft={trackingDraft} onSourceConsumed={() => { setTrackingSource(undefined); setTrackingItem(undefined); setTrackingDraft(undefined); }} onModalChange={setWorkModal} mode={view as "actions" | "calendar" | "projects" | "agents"} state={state} api={api} accountFilter={accountFilter} onOpen={view === "actions" ? openWorkSource : jumpTo} onMailChanged={reload} onNotice={setNotice} onManageAssistants={() => navigate({ page: "settings", settingsSection: "mcp", opened: false })} onOpenDraft={openCompose}
-              readerOpened={opened} fullReading={!split} onCloseReader={closeReader}
+            <Workbench key={`${view}:${accountFilter}:${trackingSession}`} work={work} initialSource={trackingSource} initialItem={trackingItem} initialDraft={trackingDraft} onSourceConsumed={() => { setTrackingSource(undefined); setTrackingItem(undefined); setTrackingDraft(undefined); }} onModalChange={setWorkModal} mode={view as "actions" | "calendar" | "projects" | "agents"} state={state} api={api} accountFilter={accountFilter} onOpen={inlineWorkView ? openWorkSource : jumpTo} onMailChanged={reload} onNotice={setNotice} onManageAssistants={() => navigate({ page: "settings", settingsSection: "mcp", opened: false })} onOpenDraft={openCompose}
+              readerOpened={opened} fullReading={!splitRoom} onCloseReader={closeReader}
               reader={selected && opened ? <div ref={readerRef} className="today-mail">{actions}{reader}</div> : undefined} />
           </main>
         ) : (
@@ -1124,7 +1148,7 @@ export function App() {
                   {!split && senderToggle}
                 </div>
               </PaneHeader>
-                {(view === "sent" || view === "all") && <div className="search-help">Cached coverage is limited. <button type="button" disabled={busy || accountFilter === "all"} onClick={() => void perform(async () => { const coverage = await api<SentCoverage>(`/accounts/${encodeURIComponent(accountFilter)}/sent/sync`, "POST", { bound: 50 }); if (coverage.error) throw new Error("Sent import failed. Existing cached mail remains available."); }, "Sent cache refreshed.")}>Fetch up to 50 Sent messages for selected account</button>{accountFilter === "all" && " Select one account to fetch Sent mail."}</div>}
+                {(view === "sent" || view === "all") && <div className="search-help">Cached mail only. <button type="button" title={accountFilter === "all" ? "Select one account to fetch up to 50 Sent messages" : "Fetch up to 50 Sent messages"} disabled={busy || accountFilter === "all"} onClick={() => void perform(async () => { const coverage = await api<SentCoverage>(`/accounts/${encodeURIComponent(accountFilter)}/sent/sync`, "POST", { bound: 50 }); if (coverage.error) throw new Error("Sent import failed. Existing cached mail remains available."); }, "Sent cache refreshed.")}>Fetch Sent</button>{accountFilter === "all" && <small>Choose an account first.</small>}</div>}
               {view === "inbox" && !query && (
                 <InboxTabs tab={tab} unread={tabUnread} onTab={switchTab} />
               )}

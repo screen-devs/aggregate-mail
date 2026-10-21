@@ -64,6 +64,10 @@ async function mount(items: Commitment[] = [], fullReading = false) {
     if (url.endsWith("/conversation")) return response({ accountId: "a", messages: state.messages.filter((mail) => mail.accountId === "a"), gaps: ["Sent history is bounded"] });
     if (url.endsWith("/content")) return response({ html: null, images: [], attachments: [] });
     if (url.endsWith("/images")) return response({ images: [] });
+    if (url === "/projects" && method === "POST") {
+      const project = { ...body, id: "new-project", accountIds: ["a"], crossAccountConfirmed: false, revision: 1, updatedAt: 1 };
+      workspace.projects.push(project as Workspace["projects"][number]); return response(project);
+    }
     if (url === "/commitments" && method === "POST" || url.startsWith("/commitments/") && method === "PATCH") {
       await writeGate;
       if (failWrite === "before") throw new Error("Synthetic rejected request");
@@ -105,7 +109,10 @@ async function mount(items: Commitment[] = [], fullReading = false) {
       const labels: Record<string, string> = { "needs-reply": "Needs reply", "needs-work": "Needs work", waiting: "Waiting", keep: "Keep existing", none: "Clear", later: "Today, 5pm", tomorrow: "Tomorrow, 9am", monday: "Monday, 9am" };
       await click(button(labels[value], group)); return;
     }
-    if (name === "Deliverable" && value === "new" && !container.querySelector('.quick-track select')) { await click(button("New deliverable")); return; }
+    if (name === "Deliverable" && !container.querySelector('.quick-track select')) {
+      if (value !== "new") assert.equal(workspace.commitments.some((item) => item.id === value), true);
+      await click(button(value === "new" ? "New deliverable" : "Use saved deliverable")); return;
+    }
     const node = field(name);
     await act(async () => {
       const prototype = node.tagName === "SELECT" ? dom.window.HTMLSelectElement.prototype : node.tagName === "TEXTAREA" ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
@@ -148,6 +155,15 @@ test("tracking saves from one explicit status choice without editing a form or m
     await ui.openQuick("mail-a", false); await ui.click(ui.button("Waiting"));
     assert.equal(ui.workspace.commitments.length, 1);
     assert.equal(ui.workspace.commitments[0].status, "waiting");
+  } finally { await ui.close(); }
+});
+
+test("Today empty groups keep only their heading and zero count", async () => {
+  const ui = await mount(); try {
+    const groups = [...ui.container.querySelectorAll(".work-group")];
+    assert.deepEqual(groups.map((group) => group.textContent), ["Needs reply 0", "Needs work 0", "Waiting 0"]);
+    assert.ok(groups.every((group) => group.children.length === 1 && group.firstElementChild?.tagName === "H2"));
+    assert.equal(ui.requests.some((call) => call.method !== "GET" && call.url !== "/sync"), false);
   } finally { await ui.close(); }
 });
 
@@ -195,6 +211,104 @@ test("full-width Today keeps the list mounted and Back/Escape return to its sele
   } finally { await ui.close(); }
 });
 
+test("Today keeps task evidence collapsed above the email and avoids duplicate source rows", async () => {
+  const ui = await mount([commitment("brief")]); try {
+    const row = ui.container.querySelector<HTMLButtonElement>(".work-select")!;
+    assert.ok(!row.textContent?.includes("Confirmed by you"));
+    assert.equal(row.closest("article")?.querySelector(".work-source"), null);
+    await ui.click(row);
+    const summary = ui.container.querySelector<HTMLElement>(".work-summary")!;
+    const details = summary.querySelector<HTMLDetailsElement>("details")!;
+    assert.equal(details.open, false);
+    assert.ok(details.textContent?.includes("Confirmed by you"));
+    assert.ok(details.querySelector(".work-source"));
+    assert.equal(summary.querySelectorAll(":scope > h2, :scope > p, :scope > dl").length, 0);
+    assert.ok(ui.container.querySelector(".today-mail .message"));
+  } finally { await ui.close(); }
+});
+
+test("Projects shows email rows and open tasks, reads inline and restores focus without changing projects", async () => {
+  const task = { ...commitment("brief"), projectId: "project-a" };
+  const ui = await mount([task]); try {
+    ui.workspace.projects.push(
+      { id: "project-a", name: "Website launch", sourceMailIds: ["mail-a", "sent-a"], accountIds: ["a"], crossAccountConfirmed: false, revision: 1, updatedAt: 1 },
+      { id: "project-b", name: "Support", sourceMailIds: ["mail-b"], accountIds: ["b"], crossAccountConfirmed: false, revision: 1, updatedAt: 1 },
+    );
+    await ui.refresh(); await ui.click(ui.sidebar("Projects"));
+    await ui.click(ui.container.querySelector<HTMLButtonElement>(".project-filters button")!);
+    const rows = ui.container.querySelectorAll<HTMLButtonElement>(".project-mail");
+    assert.equal(rows.length, 2);
+    assert.match(rows[0].textContent || "", /Sender/);
+    assert.equal(rows[0].querySelector(".project-mail-subject")?.textContent, "Private Reader mail-a");
+    assert.match(rows[0].querySelector("small")?.textContent || "", /reader@example.test.*Received/);
+    assert.ok(rows[0].querySelector("time[datetime]"));
+    assert.equal(ui.container.querySelector(".project-mail-preview"), null);
+    assert.deepEqual([...ui.container.querySelectorAll(".project-layout > .work-main > section")].map((section) => section.className), ["project-tasks", "project-emails", "project-decisions"]);
+    assert.equal(ui.container.querySelectorAll(".project-tasks .work-select").length, 1);
+    assert.equal(ui.container.querySelector(".project-overview"), null);
+    assert.equal(ui.container.querySelector('.project-filters button[aria-pressed="true"]')?.textContent, "Website launch");
+    assert.equal(ui.container.querySelector(".project-decisions details")?.hasAttribute("open"), false);
+    await ui.click(rows[0]);
+    assert.equal(ui.container.querySelector("h1")?.textContent, "Projects");
+    assert.ok(ui.container.querySelector(".today-mail .message"));
+    await ui.click(ui.button("Show cached conversation")); await ui.click(ui.button("Sent · Private Reader sent-a"));
+    assert.equal(ui.container.querySelector("h1")?.textContent, "Projects");
+    await ui.click(ui.button("Close email")); assert.equal(document.activeElement, rows[0]);
+    await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-select")!);
+    assert.ok(ui.container.querySelector(".work-summary")); assert.ok(ui.container.querySelector(".message"));
+    await ui.click([...ui.container.querySelectorAll<HTMLButtonElement>(".project-filters button")][1]);
+    assert.equal(ui.container.querySelector(".message"), null);
+    assert.equal(ui.container.querySelector(".work-summary"), null);
+    assert.deepEqual(ui.requests.filter(call => call.method !== "GET" && !call.url.startsWith("/messages/")).map(call => call.url), ["/sync"], "only the existing startup sync runs; project navigation never saves work");
+  } finally { await ui.close(); }
+});
+
+test("Projects resets reading after creation and task reassignment, and decision links restore focus", async () => {
+  const ui = await mount([{ ...commitment("brief"), projectId: "project-a" }], true); try {
+    ui.workspace.projects.push({ id: "project-a", name: "Website", sourceMailIds: ["mail-a"], accountIds: ["a"], crossAccountConfirmed: false, revision: 1, updatedAt: 1 });
+    ui.workspace.decisions.push({ id: "decision", projectId: "project-a", text: "Launch Friday", sourceMailIds: ["mail-a"], createdAt: 1 });
+    await ui.refresh(); await ui.click(ui.sidebar("Projects"));
+    await ui.click(ui.container.querySelector<HTMLButtonElement>(".project-filters button")!);
+    const source = ui.container.querySelector<HTMLButtonElement>(".project-decisions .work-source")!;
+    await ui.click(source); await ui.click(ui.button("Close email"));
+    assert.ok(document.activeElement === source, "return to the decision source");
+    await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-select")!);
+    await ui.click(ui.button("Edit task")); await ui.fill("Project", ""); await act(async () => ui.container.querySelector(".dialog form")!.dispatchEvent(new ui.dom.window.Event("submit", { bubbles: true, cancelable: true })));
+    assert.equal(ui.container.querySelector(".project-layout.has-selection"), null, "reassigned task cannot hide the project list");
+    assert.equal(ui.container.querySelector(".message"), null);
+    await ui.click(ui.container.querySelector<HTMLButtonElement>(".project-mail")!);
+    await ui.click(ui.button("New project")); await ui.fill("Project name", "New job");
+    await ui.click(ui.container.querySelectorAll<HTMLInputElement>('.dialog .work-sources input[type="checkbox"]')[1]);
+    await act(async () => ui.container.querySelector(".dialog form")!.dispatchEvent(new ui.dom.window.Event("submit", { bubbles: true, cancelable: true })));
+    assert.equal(ui.container.querySelector('.project-filters button[aria-pressed="true"]')?.textContent, "New job");
+    assert.equal(ui.container.querySelector(".message"), null, "the new project must not retain the old email");
+    assert.equal(ui.container.querySelector(".project-layout.has-selection"), null);
+  } finally { await ui.close(); }
+});
+
+test("new work clears an unrelated open email before returning to the list", async () => {
+  for (const mode of ["Today", "Projects"]) {
+    const ui = await mount([commitment("brief")]); try {
+      ui.workspace.projects.push({ id: "project-a", name: "Website", sourceMailIds: ["mail-a", "sent-a"], accountIds: ["a"], crossAccountConfirmed: false, revision: 1, updatedAt: 1 });
+      await ui.refresh(); await ui.click(ui.sidebar(mode));
+      if (mode === "Projects") {
+        await ui.click(ui.container.querySelector<HTMLButtonElement>(".project-filters button")!);
+        await ui.click(ui.container.querySelector<HTMLButtonElement>(".project-mail")!);
+      } else await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-select")!);
+      assert.ok(ui.container.querySelector(".message")?.textContent?.includes("Private Reader mail-a"));
+      await ui.click(ui.button("Add task"));
+      await ui.fill("What needs to happen", "Review the other source");
+      await ui.fill("Why track this or change it", "Explicitly requested work");
+      const source = [...ui.container.querySelectorAll<HTMLInputElement>('.dialog .work-sources input[type="radio"]')].find(node => node.parentElement?.textContent?.includes("Private Reader sent-a"))!;
+      await ui.click(source);
+      await act(async () => ui.container.querySelector(".dialog form")!.dispatchEvent(new ui.dom.window.Event("submit", { bubbles: true, cancelable: true })));
+      assert.equal(ui.workspace.commitments.at(-1)?.sourceMailId, "sent-a");
+      assert.equal(!!ui.container.querySelector(".message"), false, "new work must not retain another email's actions");
+      assert.equal(!!ui.container.querySelector(".today-layout.has-selection"), false);
+    } finally { await ui.close(); }
+  }
+});
+
 test("quick tracking creates one explicit item on duplicate submit and refreshes counts visible from mail", async () => {
   const ui = await mount(); try {
     await ui.openQuick(); assert.equal(ui.container.querySelector('.quick-track select'), null, "no meaningless chooser for new work");
@@ -208,7 +322,8 @@ test("quick tracking creates one explicit item on duplicate submit and refreshes
     assert.equal(ui.container.querySelector("h1")?.textContent, "Inbox"); assert.ok(ui.container.querySelector(".quick-track [role=status]")?.textContent?.includes("Saved"));
     await ui.click(ui.button("Close dialog"));
     await ui.clock(item.followUpAt! + 1); assert.equal(ui.sidebar("Today").getAttribute("aria-label"), "Today, 1 due follow-ups");
-    await ui.openQuick(); assert.equal(ui.field("Deliverable").value, item.id); assert.equal(ui.workspace.commitments.length, 1);
+    await ui.openQuick(); assert.equal(!!ui.container.querySelector('.quick-track select'), false);
+    assert.equal(ui.field("Work title").value, item.text); assert.equal(ui.button("Save tracking").disabled, false); assert.equal(ui.workspace.commitments.length, 1);
     assert.equal(ui.requests.some((call) => call.url === "/mcp" && call.method === "PATCH"), false);
   } finally { await ui.close(); }
 });
@@ -236,7 +351,7 @@ test("failed and unknown quick saves retain input, block blind retries and recon
       ui.failRead(true); await ui.click(ui.button("Refresh saved work")); assert.equal(ui.button("I reviewed saved work").disabled, true);
       assert.equal(ui.sidebar("Today").getAttribute("aria-label"), "Today, due follow-ups unavailable");
       ui.failRead(false); ui.failWrite("none"); await ui.click(ui.button("Refresh saved work")); await ui.click(ui.button("I reviewed saved work"));
-      if (outcome === "after") assert.equal(ui.field("Deliverable").value, "");
+      if (outcome === "after") { assert.equal(ui.button("Save tracking").disabled, true); assert.equal(ui.button("Use saved deliverable").disabled, false); }
       assert.equal(ui.button("Save tracking").disabled, true);
       if (outcome === "after") { await ui.fill("Deliverable", ui.workspace.commitments[0].id); await ui.fill("Track as", "waiting"); }
       else { await ui.fill("Deliverable", "new"); assert.equal(ui.field("Work title").value, "Keep this input"); }
@@ -269,7 +384,7 @@ test("due counts share account scope across views and exclude cleared, completed
     ui.failRead(true); await act(async () => window.dispatchEvent(new ui.dom.window.Event("focus")));
     assert.equal(ui.sidebar("Today").getAttribute("aria-label"), "Today, due follow-ups unavailable");
     await ui.click(ui.sidebar("Today")); assert.ok(ui.container.textContent?.includes("Cached work is shown"));
-    assert.equal(ui.button("Confirm a commitment").disabled, true);
+    assert.equal(ui.button("Add task").disabled, true);
     ui.failRead(false); await ui.refresh(); assert.equal(ui.sidebar("Today").getAttribute("aria-label"), "Today, 1 due follow-ups");
     await ui.click(ui.sidebar("All accounts")); assert.equal(ui.sidebar("Today").getAttribute("aria-label"), "Today, 2 due follow-ups");
     await ui.click(ui.sidebar("Calendar")); assert.ok(ui.container.querySelector('[aria-label="Follow-up calendar"]'));
@@ -337,7 +452,7 @@ test("closed deliverables require the full editor rather than an implicit quick 
 
 test("completing one deliverable updates the shared due count in Today and mail without completing its sibling", async () => {
   const ui = await mount([commitment("logo"), commitment("brief")]); try {
-    await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-select")!); await ui.click(ui.button("Edit commitment"));
+    await ui.click(ui.container.querySelector<HTMLButtonElement>(".work-select")!); await ui.click(ui.button("Edit task"));
     await ui.fill("Status", "done"); await ui.fill("Why track this or change it", "Logo delivered, brief still open");
     await act(async () => ui.container.querySelector<HTMLFormElement>(".work-form")!.dispatchEvent(new ui.dom.window.Event("submit", { bubbles: true, cancelable: true })));
     assert.equal(ui.workspace.commitments[0].status, "done"); assert.equal(ui.workspace.commitments[1].status, "needs-work");

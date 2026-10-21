@@ -119,7 +119,7 @@ function ImageConsent({ mail, loadImages, loadContent, body }: ImageProps) {
     setConsentInPrivacy(privacy);
     setStatus("loading");
     try {
-      const result = mail.images ?? content.images ?? (await loadImages(mail.id)).images;
+      const result = content.images ?? mail.images ?? (await loadImages(mail.id)).images;
       if (!active.current || request !== imageRequest.current) return;
       setImages(result.flatMap((image) => {
         const src = imageSource(image.src);
@@ -130,13 +130,17 @@ function ImageConsent({ mail, loadImages, loadContent, body }: ImageProps) {
       if (active.current && request === imageRequest.current) setStatus("error");
     }
   };
+  const htmlKnown = mail.html !== undefined || Boolean(loadContent && contentStatus === "ready");
+  // Empty extracted metadata cannot rule out images still present in formatted HTML.
+  const noImages = contentStatus === "ready" && status !== "error" && htmlKnown &&
+    (content.images ?? mail.images)?.length === 0 && !/<img\b/i.test(content.html || "");
   const shown = status === "shown" && (!privacy || consentInPrivacy);
   const gallery = shown && (images.length ? images.map((image, index) =>
     <ReaderImage key={image.src} image={image} index={index} />) :
     <p role="status">No supported remote images in this email. Embedded images are not shown.</p>);
   const textBody = <MessageText text={mail.body || "This email has no plain-text body."} />;
   return <section className="message-images" aria-label="Email content">
-    <div className="image-controls">
+    {!noImages && <div className="image-controls">
       <button className="button" type="button"
         aria-expanded={shown} aria-controls={region}
         disabled={status === "loading"}
@@ -149,10 +153,10 @@ function ImageConsent({ mail, loadImages, loadContent, body }: ImageProps) {
       </button>
       <span>Remote images can tell the sender you opened this email.
         {privacy && " Image pixels may contain personal information."}</span>
-    </div>
+    </div>}
     {body && contentStatus === "loading" && <p role="status">Loading formatted email…</p>}
     {body && contentStatus === "error" && <p role="status">Formatted email is unavailable. The text is shown below. <button type="button" className="link" onClick={() => void recoverContent()}>Try again</button></p>}
-    {body && <section aria-label="Attachments"><h2>Attachments</h2>{(content.attachments || []).length ? (content.attachments || []).map((file, index) => <p key={file.id}><Redact text={file.filename || `Attachment ${index + 1}`} /> ({file.size} bytes) {file.unavailable ? "Unavailable within the import limit" : <a href={`/api/messages/${encodeURIComponent(mail.id)}/attachments/${encodeURIComponent(file.id)}`} download>Download attachment {index + 1}</a>}</p>) : <p>{contentStatus === "ready" ? "No cached attachment metadata." : "Attachment metadata is not yet available."}</p>}</section>}
+    {body && content.attachments?.length !== 0 && <section aria-label="Attachments"><h2>Attachments</h2>{(content.attachments || []).length ? (content.attachments || []).map((file, index) => <p key={file.id}><Redact text={file.filename || `Attachment ${index + 1}`} /> ({file.size} bytes) {file.unavailable ? "Unavailable within the import limit" : <a href={`/api/messages/${encodeURIComponent(mail.id)}/attachments/${encodeURIComponent(file.id)}`} download>Download attachment {index + 1}</a>}</p>) : <p>{contentStatus === "ready" ? "No cached attachment metadata." : "Attachment metadata is not yet available."}</p>}</section>}
     <div id={region}>
       {status === "error" && <p role="status">Images could not be loaded. The email may be unavailable or archived.</p>}
       {body && <div className="message-body">
