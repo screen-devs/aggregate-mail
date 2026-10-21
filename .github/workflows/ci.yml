@@ -102,7 +102,8 @@ jobs:
         run: node scripts/set-build-version.mjs
       - run: npm ci --no-audit --no-fund
       - run: npm test
-        timeout-minutes: 8
+        # The serial suite takes about seven minutes on hosted Intel macOS runners.
+        timeout-minutes: 12
       - run: npm run build
       - name: Check desktop startup
         if: runner.os != 'Linux'
