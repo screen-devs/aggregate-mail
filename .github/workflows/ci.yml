@@ -26,7 +26,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  workflows:
+    name: Validate workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Run actionlint
+        shell: bash
+        run: |
+          directory="$(mktemp -d)"
+          trap 'rm -rf "$directory"' EXIT
+          curl --fail --silent --show-error --location \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$directory/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $directory/actionlint.tar.gz" | sha256sum --check --strict
+          tar -xzf "$directory/actionlint.tar.gz" -C "$directory" actionlint
+          "$directory/actionlint" -color
+
   build:
+    needs: workflows
     name: Test and package (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
@@ -64,12 +86,12 @@ jobs:
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -111,7 +133,7 @@ jobs:
         if: runner.os != 'macOS'
         run: node --import tsx scripts/check-release-assets.ts ${{ matrix.platform }}
       - name: Upload installer
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installer-${{ matrix.platform }}
           path: ${{ matrix.artifact }}

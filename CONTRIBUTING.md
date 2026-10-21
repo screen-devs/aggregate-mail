@@ -83,10 +83,19 @@ npm run dev      # Electron with React/CSS hot reload; restart after desktop or 
   must pass.
 - CI stamps non-tag builds with a `-ci.` version (`scripts/set-build-version.mjs`,
   ADR 0004). Do not change `version` in a PR.
-- Every push to `main` except `Release ` commits runs `auto-release.yml`: it builds the next patch from
+- Every push to `main` except `Release ` commits and commits containing
+  `[skip release]` runs `auto-release.yml`: it builds the next patch from
   the triggering commit, then creates the tag and publishes only after all four
   platform jobs pass. It does not modify `main` or the source version. Rebase
   onto `main` after each merge. Merge only release-ready work.
+- CI-only changes can suppress automatic publication by including `[skip release]`
+  in the final commit message that reaches `main` (the squash/merge commit, or
+  final rebased commit). Keep the marker in the PR title as a reminder, but verify
+  the actual merge message before merging. The marker does not disable ordinary
+  CI or explicit tag releases. Do not use `[skip ci]` for workflow upgrades.
+- Workflow changes also require `actionlint` (1.7.12), the release/workflow tests,
+  and the complete four-platform hosted CI run. CI runs workflow validation
+  before packaging; Dependabot groups weekly GitHub Actions updates.
 - Minor and major releases are manual: bump the source version, then push the
   matching `v*` tag (`release.yml`).
 - Retry an automatic release through its original workflow run. Its tag points

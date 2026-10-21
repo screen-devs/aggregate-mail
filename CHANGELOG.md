@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Upgrade and pin CI actions, lint workflows before packaging, and group weekly Actions dependency updates. Reject incomplete release asset sets and artifact digest mismatches, serialize manual releases per ref, and support `[skip release]` in the final main commit message while ordinary CI still runs.
+
 - Show the exact cached original message in Reply with safe formatting, privacy masking and remote images blocked.
 
 - Keep tiny and zero-sized newsletter text wrappers readable without disturbing text flow, preserve image height caps in placeholders, and keep inline image status prose out of sender layouts.

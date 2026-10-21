@@ -580,12 +580,30 @@ Automatic release version overrides require an exact commit SHA. Version resolut
 and build jobs have read-only repository access; only publishing can push a tag.
 The publisher checks out source before downloading artifacts, calculates checksums
 before tagging, and reuses an existing tag only at the same source commit. Manual
-version commits beginning with `Release ` skip the automatic lane. Retry an
+version commits beginning with `Release ` and commit messages containing
+`[skip release]` skip the automatic lane. The latter marker must survive in the
+actual final commit pushed to `main`; a PR label or title alone is insufficient.
+Regular CI still runs, and explicit tag releases remain unchanged. Retry an
 automatic release through its original workflow run, since its tag points at source
 with the older committed version and cannot use the strict manual tag route.
 
 Workflow source tests normalize LF and CRLF checkout line endings before checking
 the release gates and executing the tag command.
+
+CI validates workflows with checksum-pinned actionlint 1.7.12 before running the
+four-platform matrix. Actions are pinned to full official release commit SHAs;
+weekly grouped GitHub Actions-only Dependabot PRs propose updates. Hosted runners
+must support the actions' Node 24 runtime (runner 2.327.1 or newer). No unsafe
+fork-checkout opt-in is enabled.
+
+Both release lanes fail artifact downloads on digest mismatch and run the shared
+[asset preparation gate](../scripts/prepare-release-assets.mjs) before publication.
+It requires the exact four versioned platform installers plus the two updater
+manifests, all nonempty regular files, and rejects extras and symlinks. Only after
+validation does it generate deterministic SHA-256 checksums. Existing per-platform
+manifest/SHA512 verification remains in the build jobs. Manual runs for the same
+ref serialize without cancelling publication. See
+[ADR 0055](adr/0055-ci-release-workflow-maintenance.md).
 
 ## Email links
 
