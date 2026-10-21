@@ -849,8 +849,6 @@ export function App() {
   const privacyContext = useMemo(() => ({ on: privacy, revealed, toggle: toggleAddress,
     accounts: state.accounts, names: collectPrivateNames(state.accounts) }),
   [privacy, revealed, toggleAddress, state.accounts]);
-  const replySources = compose?.inReplyTo ? state.messages.filter((mail) =>
-    mail.accountId === compose.accountId && mail.messageId === compose.inReplyTo) : [];
   useEffect(() => {
     if (contextMenu && !menuMail) closeContextMenu();
   }, [contextMenu, menuMail, closeContextMenu]);
@@ -1171,6 +1169,7 @@ export function App() {
                     sort={sort}
                     opening={interaction.opening}
                     accounts={state.accounts}
+                    disabled={busy || syncing}
                     onOpen={openMail}
                     onSelect={setSelectedId}
                     onMenu={showMailMenu}
@@ -1364,7 +1363,7 @@ export function App() {
             onSnooze={(until) => void perform(async () => {
               await api(`/messages/${encodeURIComponent(snooze.mail.id)}`, "PATCH", { action: "snooze", until });
               setSnooze(null);
-              if (selectedId === snooze.id) setOpened(false);
+              if (selectedId === snooze.mailId) setOpened(false);
             }, `Email snoozed until ${new Date(until).toLocaleString()}.`)}
             onUnsnooze={() => void perform(async () => {
               await api(`/messages/${encodeURIComponent(snooze.mail.id)}`, "PATCH", { action: "unsnooze" });

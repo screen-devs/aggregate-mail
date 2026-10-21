@@ -1262,48 +1262,6 @@ test("reader buttons reuse unread anchors, edge guards and image resets without 
   } finally { await app.close(); }
 });
 
-test("reply shows only its exact cached original with safe formatting and blocked images", { timeout: 10000 }, async () => {
-  const app = await mount();
-  try {
-    const source = app.state.messages.find((mail) => mail.id === "a:1")!;
-    source.messageId = "<reply-source@example.test>";
-    source.sender = "Nora Lane";
-    source.address = "nora@example.test";
-    source.to = "Nora Lane <first@example.com>";
-    source.html = '<p><strong>No<em>ra La</em>ne formatted text</strong></p><script>unsafe()</script><img src="https://tracking.example.test/pixel?to=first%40example.com">';
-    source.body = "Plain fallback with https://tracking.example.test/pixel?to=reader@example.test";
-    app.state.messages.find((mail) => mail.id === "b:1")!.messageId = source.messageId;
-    await app.open("a:1");
-    await app.click(app.button("Hide personal information"));
-    await app.click(app.button("Reply"));
-    const original = app.container.querySelector<HTMLElement>(".compose-original")!;
-    assert.ok(original);
-    assert.match(original.textContent!, /formatted text/);
-    assert.ok(original.querySelector(".formatted-mail strong"), "privacy preserves supported formatting");
-    assert.doesNotMatch(original.textContent!, /tracking\.example\.test/);
-    assert.equal(original.querySelector("img[src]"), null);
-    assert.equal(original.querySelector("script, style"), null);
-    assert.doesNotMatch(original.textContent!, /Nora|Lane/);
-    await app.click(app.button("Show personal information"));
-    assert.match(original.textContent!, /Nora Lane/);
-    assert.ok(original.querySelector("strong"), "supported HTML hierarchy remains rendered");
-    assert.equal(app.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message body"]')!.value, "");
-  } finally { await app.close(); }
-});
-
-test("reply preview disappears when its exact same-account source is ambiguous", { timeout: 10000 }, async () => {
-  const app = await mount();
-  try {
-    const source = app.state.messages.find((mail) => mail.id === "a:1")!;
-    source.messageId = "<reply-source@example.test>";
-    app.state.messages.find((mail) => mail.id === "a:2")!.messageId = source.messageId;
-    await app.open("a:1");
-    await app.click(app.button("Reply"));
-    assert.equal(app.container.querySelector(".compose-original"), null);
-  } finally { await app.close(); }
-});
-
-
 
 test("updater Escape dismisses only update details and preserves reader focus", { timeout: 10000 }, async () => {
   const app = await mount(false, undefined, true);
