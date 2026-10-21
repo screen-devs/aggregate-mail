@@ -9,6 +9,16 @@
 .work-templates .work-meta { max-width: 65ch; }
 .work-toolbar, .calendar-toolbar { justify-content: space-between; flex-wrap: wrap; padding: 6px 0 14px; }
 .work-toolbar p { margin: 0; }
+/* Inside the pane header the toolbar becomes a single non-wrapping row; the
+   intro truncates and the controls keep to the right. */
+.head-tools .work-toolbar { flex: 1; min-width: 0; padding: 0; flex-wrap: nowrap; }
+.head-tools .work-intro { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head-tools .work-controls { margin-left: auto; flex-shrink: 0; }
+.head-tools .agent-navigation { position: static; z-index: auto; padding: 0; margin: 0 0 0 8px; background: none; border-bottom: 0; }
+/* Assistants keeps its controls inline inside Settings: restore the padding
+   the surrounding work content previously supplied. */
+.work-head-inline { padding: 16px 24px 0; }
+.work-head-inline + .work-content { padding-top: 0; }
 .work-meta, .work-intro { font-size: calc(12px * var(--text-scale, 1)); }
 .work-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 34%); gap: 24px; }
 .work-main { min-width: 0; }

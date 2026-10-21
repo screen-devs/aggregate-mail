@@ -2,7 +2,7 @@ import { inboxTabs, type InboxTab } from "../../shared/inbox-tabs";
 import { SlidingNav } from "../ui/SlidingNav";
 import { tabIcons } from "./format";
 
-/** Inbox categories under the mail header, each with its unread count. */
+/** Inbox categories beside the mail header title, each with its unread count. */
 export function InboxTabs({ tab, unread, onTab }: {
   tab: InboxTab;
   unread: Map<InboxTab, number>;

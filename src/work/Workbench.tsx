@@ -180,13 +180,15 @@ function OpenCodeSetup({ token, enabled, api, onEnabled, onNotice }: {
   </>;
 }
 
-export function Workbench({ mode, state, api, work, accountFilter, initialSource, initialItem, initialDraft, onSourceConsumed, onOpen, onMailChanged, onNotice, onModalChange, reader, readerOpened = false, onCloseReader, fullReading = false, onManageAssistants, onOpenDraft }: {
+export function Workbench({ mode, state, api, work, accountFilter, initialSource, initialItem, initialDraft, onSourceConsumed, onOpen, onMailChanged, onNotice, onModalChange, reader, readerOpened = false, onCloseReader, fullReading = false, onManageAssistants, onOpenDraft, renderHead }: {
   mode: "actions" | "calendar" | "projects" | "agents" | "assistants"; state: State; api: Api; work: WorkspaceState; accountFilter: string; initialSource?: string; initialItem?: Commitment; initialDraft?: Partial<Commitment>;
   onOpen: (mail: Mail) => void; onMailChanged: () => Promise<unknown>; onNotice: (text: string) => void;
   onManageAssistants?: () => void;
   onOpenDraft?: (draft: Draft) => void;
   reader?: ReactNode; readerOpened?: boolean; onCloseReader?: () => void; fullReading?: boolean;
   onSourceConsumed?: () => void; onModalChange?: (open: boolean) => void;
+  // Places the view's header controls beside the pane title.
+  renderHead: (tools: ReactNode) => ReactNode;
 }) {
   const { workspace, error, loaded, pending, stale, now, blocked } = work;
   const acknowledged = useRef(false);
@@ -329,16 +331,22 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     setSelectedId(null); setDetailOpen(false); missingSelection.current = false;
     selectedRow.current = null; onCloseReader?.();
   };
-  return <PrivacyContext.Provider value={{ ...privacyContext, names: privateNames }}><div className={`work-content work-${mode}${mode === "actions" || mode === "projects" ? " today-content" : ""}`}>
-    <div className="work-toolbar">
-      {mode === "projects" ? <div className="project-filters" role="group" aria-label="Choose a project">{projects.map((project, index) =>
-        <button type="button" key={project.id} disabled={blocked} aria-pressed={projectId === project.id} onClick={() => { setProjectId(project.id); closeProjectReader(); setDecision(""); setDecisionSources([]); }}><Redact text={privacy ? `Project ${index + 1}` : project.name} /></button>
-      )}</div> : <p className="work-intro">{mode === "agents" ? "Review changes before they run." : mode === "assistants" ? "Set up access for each assistant." : mode === "calendar" ? "Events, tracked work, follow-ups and snoozed mail" : `${openCount} ${stale ? "cached " : ""}open ${openCount === 1 ? "task" : "tasks"}`}</p>}
-      <div className="work-controls"><button type="button" disabled={pending || work.refreshing} aria-label="Refresh workspace" onClick={() => void load()}>Refresh</button>{mode === "actions" && <button className="button" type="button" disabled={blocked} onClick={() => setEditor("new")}>Add task</button>}{mode === "projects" && <>
-        <button type="button" disabled={blocked} onClick={() => setProjectEditor("new")}>New project</button>
-        {selectedProject && <><button type="button" disabled={blocked} onClick={() => setProjectEditor(selectedProject)}>Edit project / add emails</button><button className="button" type="button" disabled={blocked} onClick={() => { setDraft({ projectId: selectedProject.id }); setEditor("new"); }}>Add task</button></>}
-      </>}{mode === "agents" && onManageAssistants && <button type="button" onClick={onManageAssistants}>Manage assistants</button>}</div>
-    </div>
+  return <PrivacyContext.Provider value={{ ...privacyContext, names: privateNames }}>
+    {renderHead(<>
+      <div className="work-toolbar">
+        {mode === "projects" ? <div className="project-filters" role="group" aria-label="Choose a project">{projects.map((project, index) =>
+          <button type="button" key={project.id} disabled={blocked} aria-pressed={projectId === project.id} onClick={() => { setProjectId(project.id); closeProjectReader(); setDecision(""); setDecisionSources([]); }}><Redact text={privacy ? `Project ${index + 1}` : project.name} /></button>
+        )}</div> : <p className="work-intro">{mode === "agents" ? "Review changes before they run." : mode === "assistants" ? "Set up access for each assistant." : mode === "calendar" ? "Events, tracked work, follow-ups and snoozed mail" : `${openCount} ${stale ? "cached " : ""}open ${openCount === 1 ? "task" : "tasks"}`}</p>}
+        <div className="work-controls"><button type="button" disabled={pending || work.refreshing} aria-label="Refresh workspace" onClick={() => void load()}>Refresh</button>{mode === "actions" && <button className="button" type="button" disabled={blocked} onClick={() => setEditor("new")}>Add task</button>}{mode === "projects" && <>
+          <button type="button" disabled={blocked} onClick={() => setProjectEditor("new")}>New project</button>
+          {selectedProject && <><button type="button" disabled={blocked} onClick={() => setProjectEditor(selectedProject)}>Edit project / add emails</button><button className="button" type="button" disabled={blocked} onClick={() => { setDraft({ projectId: selectedProject.id }); setEditor("new"); }}>Add task</button></>}
+        </>}{mode === "agents" && onManageAssistants && <button type="button" onClick={onManageAssistants}>Manage assistants</button>}</div>
+      </div>
+      {mode === "agents" && <div className="agent-navigation"><span id={agentTabs} hidden>Agent sections</span><Segmented labelledBy={agentTabs} value={agentTab}
+        choices={[{ id: "review", label: `Review queue (${workspace.proposals.filter((item) => item.status === "pending").length})` }, { id: "activity", label: "Activity" }]}
+        onChange={setAgentTab} /></div>}
+    </>)}
+    <div className={`work-content work-${mode}${mode === "actions" || mode === "projects" ? " today-content" : ""}`}>
     {error && !editor && <p role="alert">{error}</p>}
     {(mode === "agents" || mode === "assistants") && agentError && <p role="alert">{agentError}</p>}
     {!loaded && !error && <p role="status">Loading confirmed work…</p>}
@@ -402,9 +410,6 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
         </> : <p className="work-empty">{projects.length ? "Choose a project." : "No projects yet. Create one to link emails and tasks."}</p>}
       </>}
       {(mode === "agents" || mode === "assistants") && <>
-        {mode === "agents" && <div className="agent-navigation"><span id={agentTabs} hidden>Agent sections</span><Segmented labelledBy={agentTabs} value={agentTab}
-          choices={[{ id: "review", label: `Review queue (${workspace.proposals.filter((item) => item.status === "pending").length})` }, { id: "activity", label: "Activity" }]}
-          onChange={setAgentTab} /></div>}
         {mode === "assistants" && <div className="agent-assistants">
         <div className="agent-section-heading"><h2>Your assistants</h2></div><div className="agent-cards">
         {grants.map((grant) => <article className="work-item agent-card" key={grant.id}>

@@ -377,6 +377,12 @@
 .app-toolbar .mail-navigation { flex: 0 0 auto; padding: 0; border: 0; gap: 2px; }
 .app-toolbar .mail-navigation button { width: 28px; height: 30px; padding: 0; justify-content: center; }
 .main-head { height: 40px; min-height: 40px; }
+/* Secondary controls share the title line: category tabs, cached-mail notes
+   and each work view's controls. */
+.main-head .inbox-tabs { flex: 1; min-width: 0; height: auto; padding: 0; border-bottom: 0; margin-left: 12px; }
+.head-tools { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin-left: 12px; }
+.head-note { flex: 1; min-width: 0; margin-left: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); }
+.head-note button { font-size: inherit; }
 .drafts-pane { display: flex; flex: 1; flex-direction: column; min-height: 0; background: var(--surface); }
 .draft-list { overflow: auto; min-height: 0; }
 .draft-list-heading { display: flex; align-items: center; justify-content: space-between; padding: 8px 20px; color: var(--text-3); border-bottom: 1px solid var(--line); }

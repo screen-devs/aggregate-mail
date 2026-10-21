@@ -233,7 +233,7 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
   const root=createRoot(document.getElementById("root")!);const container=document.getElementById("root")!;let privacy=false, accountFilter="all";const notices:string[]=[];
   function Harness() {
     const work = useWorkspace(api); currentWork = work;
-    return <PrivacyContext.Provider value={{on:privacy,revealed:new Set(),toggle(){},accounts:state.accounts,names:["Private Reader","Private","Reader"]}}><Workbench work={work} mode={mode} state={state} api={api} accountFilter={accountFilter} onOpen={mail=>opened.push(mail.id)} onMailChanged={async()=>{}} onNotice={text=>notices.push(text)}/></PrivacyContext.Provider>;
+    return <PrivacyContext.Provider value={{on:privacy,revealed:new Set(),toggle(){},accounts:state.accounts,names:["Private Reader","Private","Reader"]}}><Workbench work={work} mode={mode} state={state} api={api} accountFilter={accountFilter} onOpen={mail=>opened.push(mail.id)} onMailChanged={async()=>{}} onNotice={text=>notices.push(text)} renderHead={(tools)=><div className="main-head">{tools}</div>}/></PrivacyContext.Provider>;
   }
   const render=async()=>act(async()=>root.render(app?<App/>:<Harness/>));
   await render();
@@ -251,6 +251,16 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
 }
 
 test("real App launches on the manual action screen without selecting or reading hidden Inbox mail",async()=>{const ui=await mount("actions",true);try{assert.equal(ui.container.querySelector("h1")?.textContent,"Today");assert.equal(ui.container.querySelector(".row"),null);assert.ok(ui.container.textContent?.includes("open tasks"));assert.equal(ui.requests.some(request=>request.method==="PATCH"),false);}finally{await ui.close();}});
+
+test("work controls and agent sections render inside the pane header",async()=>{const ui=await mount();try{
+ assert.ok(ui.container.querySelector(".main-head .work-controls"),"work controls share the header");
+ assert.ok(ui.button("Refresh workspace").closest(".main-head"),"Refresh sits in the header");
+ assert.ok(ui.button("Add task").closest(".main-head"),"Add task sits in the header");
+ assert.equal(ui.container.querySelector(".work-content .work-toolbar"),null,"no toolbar remains in the body");
+ ui.setMode("agents");await ui.render();
+ assert.ok(ui.container.querySelector(".main-head .agent-navigation"),"agent sections share the header");
+ assert.equal(ui.container.querySelector(".work-content .agent-navigation"),null,"agent sections left the body");
+}finally{await ui.close();}});
 
 test("manual commitments keep source identity, partial updates and explicit reopen history",async()=>{const ui=await mount();try{
  await ui.click(ui.button("Add task"));await ui.fill("What needs to happen","Deliver two parts");await ui.fill("Why track this or change it","Promise in source");

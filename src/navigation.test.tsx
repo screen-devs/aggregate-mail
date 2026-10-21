@@ -1689,6 +1689,46 @@ test('V2 compact toolbar, text size, page keys and drafts navigation', async () 
   } finally { await ui.close(); }
 });
 
+test('pane tools live in the persistent toolbar and section controls share the title line', async () => {
+  const ui = await mount();
+  try {
+    for (const label of ["Filters", "Hide personal information", "Sender details"]) {
+      const control = ui.button(label);
+      assert.ok(control.closest(".app-toolbar"), `${label} sits in the persistent toolbar`);
+      assert.equal(control.closest(".main-head, .reader-head"), null, `${label} left the pane headers`);
+    }
+    const tabs = ui.container.querySelector(".inbox-tabs")!;
+    assert.ok(tabs.parentElement?.classList.contains("main-head"), "Inbox tabs sit inside the header");
+    assert.ok(tabs.previousElementSibling?.classList.contains("pane-title"), "tabs follow the title");
+    assert.equal(ui.container.querySelectorAll(".inbox-tabs").length, 1, "no separate tabs row");
+    await ui.open("a:1");
+    assert.ok(ui.container.querySelector(".reader-head"), "split layout shows the reader pane");
+    for (const label of ["Filters", "Hide personal information", "Sender details"])
+      assert.ok(ui.button(label).closest(".app-toolbar"), `${label} stays in the toolbar beside the reader`);
+    assert.equal(ui.container.querySelector(".reader-head .pane-tools"), null, "reader head keeps no tool strip");
+    await ui.input(ui.container.querySelector<HTMLInputElement>(".search input")!, "alpha");
+    assert.equal(ui.container.querySelector(".inbox-tabs"), null, "search hides the tabs");
+    await ui.click(ui.button("Clear search"));
+    await ui.click(ui.button("Sent"));
+    const note = ui.container.querySelector(".head-note")!;
+    assert.ok(note.parentElement?.classList.contains("main-head"), "the cached note sits inside the header");
+    assert.ok(note.previousElementSibling?.classList.contains("pane-title"));
+    assert.equal(ui.container.querySelector(".list-pane > .search-help"), null, "no separate note row");
+    await ui.click(ui.button("Settings"));
+    assert.ok(ui.button("Hide personal information").closest(".app-toolbar"), "privacy stays in the toolbar on Settings");
+    assert.equal(ui.container.querySelector('[aria-label="Filters"]'), null, "Settings has no Filters");
+    assert.equal(ui.container.querySelector('[aria-label="Sender details"]'), null, "Settings has no Sender details");
+    await ui.click(ui.button("Drafts"));
+    assert.ok(ui.button("Hide personal information").closest(".app-toolbar"), "privacy stays in the toolbar on Drafts");
+    assert.equal(ui.container.querySelector('[aria-label="Filters"]'), null, "Drafts has no Filters");
+    await ui.click(ui.button("Agent review"));
+    assert.equal(ui.container.querySelector('[aria-label="Filters"]'), null, "work views have no Filters");
+    assert.equal(ui.container.querySelector('[aria-label="Sender details"]'), null, "work views have no Sender details");
+    assert.ok(ui.container.querySelector(".main-head .agent-navigation"), "agent sections sit inside the header");
+    assert.ok(ui.container.querySelector(".main-head .work-controls"), "work controls sit inside the header");
+  } finally { await ui.close(); }
+});
+
 test('assistant management stays in Settings and Agent review only shows review work', async () => {
   const ui = await mount();
   try {

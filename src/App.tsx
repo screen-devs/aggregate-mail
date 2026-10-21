@@ -1034,6 +1034,23 @@ export function App() {
                   setSearching(true);
                   navigate({ page: "mail", ...(settings || workView ? { view: "all", readFilter: "all", relevanceFilter: "all", labelFilter: "all" } : {}), query: value, opened: false, selectedId: null }, true);
                 }} onClear={closeSearch} onCommands={() => setPalette(true)} />
+              <div className="pane-tools">
+                {!settings && view !== "drafts" && !workView && <MailFilters
+                  open={filtersOpen}
+                  active={filtersActive}
+                  location={navigation.location}
+                  labels={labels}
+                  accounts={state.accounts}
+                  blocked={navigationBlocked}
+                  showReset={hasListControls}
+                  labelName={(name) => privacy ? redactPrivateText(name, collectPrivateNames(state.accounts, opened ? selected || {} : {})) : name}
+                  onOpen={setFiltersOpen}
+                  onChange={(patch) => navigate({ ...patch, selectedId: null, opened: false })}
+                  onReset={resetListControls}
+                />}
+                {privacyButton}
+                {!settings && view !== "drafts" && !workView && senderToggle}
+              </div>
             </PaneHeader>
             <div hidden={!searching || settings || workView} className="search-help">
               <span id="mail-search-help" role={search.error ? "alert" : undefined}>{search.error || `Cached ${viewNames[view]} · current account and filters`}</span>
@@ -1043,7 +1060,6 @@ export function App() {
           <div className="settings-pane">
             <PaneHeader className="main-head update-reserved" corner={null} maximized={maximized}>
               <h1 className="pane-title">Settings</h1>
-              <div className="pane-tools">{privacyButton}</div>
             </PaneHeader>
             <CredentialFallbackNotice mode={window.desktop?.credentialFallback} />
             <SettingsPage
@@ -1100,7 +1116,7 @@ export function App() {
               section={settingsSection}
               onSection={setSettingsSection}
               assistants={<Workbench mode="assistants" state={state} api={api} work={work} accountFilter={accountFilter}
-                onOpen={jumpTo} onMailChanged={reload} onNotice={setNotice} onModalChange={setWorkModal} />}
+                onOpen={jumpTo} onMailChanged={reload} onNotice={setNotice} onModalChange={setWorkModal} renderHead={(tools) => <div className="work-head-inline">{tools}</div>} />}
               appearance={appearance}
               scheme={themePreview?.scheme ?? scheme}
               onAppearance={(value) => {
@@ -1118,17 +1134,15 @@ export function App() {
         ) : view === "drafts" ? (
           <main className="drafts-pane">
             <PaneHeader className="main-head" corner={null} maximized={maximized}>
-              <h1 className="pane-title">Drafts</h1><div className="pane-tools">{privacyButton}</div>
+              <h1 className="pane-title">Drafts</h1>
             </PaneHeader>
             <DraftList accounts={state.accounts} api={api} accountFilter={accountFilter} query={query}
               refreshKey={state.draftCount} active={!compose} onOpen={openCompose} />
           </main>
         ) : workView ? (
           <main className="work-pane">
-            <PaneHeader className="main-head update-reserved" corner={null} maximized={maximized}>
-              <h1 className="pane-title">{viewNames[view]}</h1><div className="pane-tools">{privacyButton}</div>
-            </PaneHeader>
             <Workbench key={`${view}:${accountFilter}:${trackingSession}`} work={work} initialSource={trackingSource} initialItem={trackingItem} initialDraft={trackingDraft} onSourceConsumed={() => { setTrackingSource(undefined); setTrackingItem(undefined); setTrackingDraft(undefined); }} onModalChange={setWorkModal} mode={view as "actions" | "calendar" | "projects" | "agents"} state={state} api={api} accountFilter={accountFilter} onOpen={inlineWorkView ? openWorkSource : jumpTo} onMailChanged={reload} onNotice={setNotice} onManageAssistants={() => navigate({ page: "settings", settingsSection: "mcp", opened: false })} onOpenDraft={openCompose}
+              renderHead={(tools) => <PaneHeader className="main-head update-reserved" corner={null} maximized={maximized}><h1 className="pane-title">{viewNames[view]}</h1><div className="head-tools">{tools}</div></PaneHeader>}
               readerOpened={opened} fullReading={!splitRoom} onCloseReader={closeReader}
               reader={selected && opened ? <div ref={readerRef} className="today-mail">{actions}{reader}</div> : undefined} />
           </main>
@@ -1137,28 +1151,11 @@ export function App() {
             <section className="list-pane">
               <PaneHeader className={!contextShown && !split ? "main-head update-reserved" : "main-head"} corner={null} maximized={maximized}>
                 <h1 className="pane-title">{viewNames[view]}</h1>
-                <div className="pane-tools">
-                  <MailFilters
-                    open={filtersOpen}
-                    active={filtersActive}
-                    location={navigation.location}
-                    labels={labels}
-                    accounts={state.accounts}
-                    blocked={navigationBlocked}
-                    showReset={hasListControls}
-                    labelName={(name) => privacy ? redactPrivateText(name, collectPrivateNames(state.accounts, opened ? selected || {} : {})) : name}
-                    onOpen={setFiltersOpen}
-                    onChange={(patch) => navigate({ ...patch, selectedId: null, opened: false })}
-                    onReset={resetListControls}
-                  />
-                  {privacyButton}
-                  {!split && senderToggle}
-                </div>
+                {view === "inbox" && !query && (
+                  <InboxTabs tab={tab} unread={tabUnread} onTab={switchTab} />
+                )}
+                {(view === "sent" || view === "all") && <div className="head-note">Cached mail only. <button type="button" title={accountFilter === "all" ? "Select one account to fetch up to 50 Sent messages" : "Fetch up to 50 Sent messages"} disabled={busy || accountFilter === "all"} onClick={() => void perform(async () => { const coverage = await api<SentCoverage>(`/accounts/${encodeURIComponent(accountFilter)}/sent/sync`, "POST", { bound: 50 }); if (coverage.error) throw new Error("Sent import failed. Existing cached mail remains available."); }, "Sent cache refreshed.")}>Fetch Sent</button>{accountFilter === "all" && <small>Choose an account first.</small>}</div>}
               </PaneHeader>
-                {(view === "sent" || view === "all") && <div className="search-help">Cached mail only. <button type="button" title={accountFilter === "all" ? "Select one account to fetch up to 50 Sent messages" : "Fetch up to 50 Sent messages"} disabled={busy || accountFilter === "all"} onClick={() => void perform(async () => { const coverage = await api<SentCoverage>(`/accounts/${encodeURIComponent(accountFilter)}/sent/sync`, "POST", { bound: 50 }); if (coverage.error) throw new Error("Sent import failed. Existing cached mail remains available."); }, "Sent cache refreshed.")}>Fetch Sent</button>{accountFilter === "all" && <small>Choose an account first.</small>}</div>}
-              {view === "inbox" && !query && (
-                <InboxTabs tab={tab} unread={tabUnread} onTab={switchTab} />
-              )}
               <CredentialFallbackNotice mode={window.desktop?.credentialFallback} />
               {opened && !split && actions}
               <div
@@ -1213,7 +1210,6 @@ export function App() {
               <section className="reader-pane" aria-label="Reading pane">
                 <PaneHeader className={contextShown ? "reader-head" : "reader-head update-reserved"} corner={null} maximized={maximized}>
                   {opened && actions}
-                  <div className="pane-tools">{senderToggle}</div>
                 </PaneHeader>
                 <div ref={readerRef} className="reader-scroll">
                   <div key={selected && opened ? selected.id : "empty"} className="pane open">
