@@ -45,7 +45,7 @@ test("unconfigured Google sign-in is not offered and account onboarding stays se
   const html = settings(false);
   assert.ok(!html.includes('href="/api/oauth/google"'));
   assert.match(html, /Connect account/);
-  assert.match(html, /<details[^>]*><summary>Advanced connection setup<\/summary>/);
+  assert.match(html, /<details[^>]*><summary>Google setup and sorting keys<\/summary>/);
 });
 test("configured Google sign-in is offered", () => {
   assert.match(settings(true), /href="\/api\/oauth\/google"/);
@@ -211,6 +211,7 @@ async function choose(container: HTMLElement, provider: "icloud" | "imap") {
 test("Google callback dismisses the normal provider chooser", async () => withDOM(async ({ container, render }) => {
   const api = mockApp();
   await render(<App />);
+  await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
   await openChooser(container);
   assert.ok(container.querySelector('a[href="/api/oauth/google"]'));
   await api.googleConnected();
@@ -223,6 +224,7 @@ for (const provider of ["icloud", "imap"] as const) {
       const connection = deferred<Response>();
       const api = mockApp(connection.promise);
       await render(<App />);
+  await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
       await openChooser(container);
       await choose(container, provider);
       const originalForm = element(container, "form");
@@ -338,6 +340,7 @@ test("fallback warning collapses across mail and Settings and remains reopenable
     onState: () => () => {}, onDrain: () => () => {},
   };
   await render(<App />);
+  await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
   assert.equal(container.querySelectorAll(".credential-fallback-notice").length, 1);
   assert.equal(container.querySelectorAll(".update-notice").length, 1);
   assert.ok(container.querySelector(".app-update-control .update-notice-trigger"));
@@ -350,8 +353,8 @@ test("fallback warning collapses across mail and Settings and remains reopenable
   await act(async () => element<HTMLButtonElement>(container, '[aria-label="Settings"]').click());
   assert.equal(container.querySelectorAll(".credential-fallback-notice").length, 1);
   assert.ok(container.querySelector('.settings-pane .credential-fallback-notice.collapsed'));
-  const about = [...container.querySelectorAll<HTMLButtonElement>(".sidebar-group button")]
-    .find((button) => button.textContent?.trim() === "About");
+  const about = [...container.querySelectorAll<HTMLButtonElement>(".settings-navigation button")]
+    .find((button) => button.textContent?.trim() === "About and storage");
   assert.ok(about);
   await act(async () => about.click());
   assert.match(element(container, ".settings").textContent!, /protected by a local key and file permissions only/);
@@ -365,10 +368,12 @@ test("fallback warning collapses across mail and Settings and remains reopenable
   assert.ok(container.querySelector('.list-pane .credential-fallback-notice.collapsed'));
   await render(null);
   await render(<App />);
+  await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
   assert.ok(container.querySelector('.list-pane .credential-fallback-notice.collapsed'));
   await render(null);
   sessionStorage.clear();
   await render(<App />);
+  await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
   assert.ok(container.querySelector('.list-pane .credential-fallback-notice[role="alert"]'));
-  assert.ok(api.calls.every((call) => call === "GET /api/state"), "No account or provider mutation");
+  assert.ok(api.calls.every((call) => ["GET /api/state", "GET /api/workspace"].includes(call)), "No account or provider mutation");
 }));

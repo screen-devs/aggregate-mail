@@ -1,5 +1,5 @@
 import { useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { imageSource, type Mail, type MailImage } from "../../shared/types";
+import { imageSource, type Mail, type MailImage, type MailAttachment } from "../../shared/types";
 import { privateMailLink } from "../../shared/mail-content";
 import { redactPrivateText } from "../privacy";
 import { PrivacyContext, Redact } from "../ui/Privacy";
@@ -70,9 +70,9 @@ function ReaderImage({ image, index }: { image: MailImage; index: number }) {
     </figcaption>
   </figure>;
 }
-export type ContentResult = { html: string | null; images?: MailImage[] };
+export type ContentResult = { html: string | null; images?: MailImage[]; attachments?: MailAttachment[] };
 type ImageProps = {
-  mail: Pick<Mail, "id" | "images"> & Partial<Pick<Mail, "html" | "body">>;
+  mail: Pick<Mail, "id" | "images"> & Partial<Pick<Mail, "html" | "body" | "attachments">>;
   loadImages: (id: string) => Promise<{ images: MailImage[] }>;
   loadContent?: (id: string) => Promise<ContentResult>;
   body?: boolean;
@@ -88,8 +88,8 @@ function ImageConsent({ mail, loadImages, loadContent, body }: ImageProps) {
   const [status, setStatus] = useState("blocked");
   const [consentInPrivacy, setConsentInPrivacy] = useState(false);
   const [images, setImages] = useState<MailImage[]>([]);
-  const [content, setContent] = useState<ContentResult>({ html: mail.html ?? null, images: mail.images });
-  const [contentStatus, setContentStatus] = useState(mail.html === undefined && loadContent ? "loading" : "ready");
+  const [content, setContent] = useState<ContentResult>({ html: mail.html ?? null, images: mail.images, attachments: mail.attachments });
+  const [contentStatus, setContentStatus] = useState((mail.html === undefined || mail.attachments === undefined) && loadContent ? "loading" : "ready");
   const active = useRef(true);
   const imageRequest = useRef(0);
   const region = useId();
@@ -112,14 +112,14 @@ function ImageConsent({ mail, loadImages, loadContent, body }: ImageProps) {
     }
   };
   useEffect(() => {
-    if (mail.html === undefined && loadContent) void recoverContent();
+    if ((mail.html === undefined || mail.attachments === undefined) && loadContent) void recoverContent();
   }, []);
   const show = async () => {
     const request = ++imageRequest.current;
     setConsentInPrivacy(privacy);
     setStatus("loading");
     try {
-      const result = mail.images ?? content.images ?? (await loadImages(mail.id)).images;
+      const result = content.images ?? mail.images ?? (await loadImages(mail.id)).images;
       if (!active.current || request !== imageRequest.current) return;
       setImages(result.flatMap((image) => {
         const src = imageSource(image.src);
@@ -130,13 +130,17 @@ function ImageConsent({ mail, loadImages, loadContent, body }: ImageProps) {
       if (active.current && request === imageRequest.current) setStatus("error");
     }
   };
+  const htmlKnown = mail.html !== undefined || Boolean(loadContent && contentStatus === "ready");
+  // Empty extracted metadata cannot rule out images still present in formatted HTML.
+  const noImages = contentStatus === "ready" && status !== "error" && htmlKnown &&
+    (content.images ?? mail.images)?.length === 0 && !/<img\b/i.test(content.html || "");
   const shown = status === "shown" && (!privacy || consentInPrivacy);
   const gallery = shown && (images.length ? images.map((image, index) =>
     <ReaderImage key={image.src} image={image} index={index} />) :
     <p role="status">No supported remote images in this email. Embedded images are not shown.</p>);
   const textBody = <MessageText text={mail.body || "This email has no plain-text body."} />;
   return <section className="message-images" aria-label="Email content">
-    <div className="image-controls">
+    {!noImages && <div className="image-controls">
       <button className="button" type="button"
         aria-expanded={shown} aria-controls={region}
         disabled={status === "loading"}
@@ -149,9 +153,10 @@ function ImageConsent({ mail, loadImages, loadContent, body }: ImageProps) {
       </button>
       <span>Remote images can tell the sender you opened this email.
         {privacy && " Image pixels may contain personal information."}</span>
-    </div>
+    </div>}
     {body && contentStatus === "loading" && <p role="status">Loading formatted email…</p>}
     {body && contentStatus === "error" && <p role="status">Formatted email is unavailable. The text is shown below. <button type="button" className="link" onClick={() => void recoverContent()}>Try again</button></p>}
+    {body && content.attachments?.length !== 0 && <section aria-label="Attachments"><h2>Attachments</h2>{(content.attachments || []).length ? (content.attachments || []).map((file, index) => <p key={file.id}><Redact text={file.filename || `Attachment ${index + 1}`} /> ({file.size} bytes) {file.unavailable ? "Unavailable within the import limit" : <a href={`/api/messages/${encodeURIComponent(mail.id)}/attachments/${encodeURIComponent(file.id)}`} download>Download attachment {index + 1}</a>}</p>) : <p>{contentStatus === "ready" ? "No cached attachment metadata." : "Attachment metadata is not yet available."}</p>}</section>}
     <div id={region}>
       {status === "error" && <p role="status">Images could not be loaded. The email may be unavailable or archived.</p>}
       {body && <div className="message-body">

@@ -7,7 +7,7 @@
   max-width: 100%;
   margin: -8px 0 0;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-3);
 }
 .stored svg {
@@ -17,16 +17,21 @@
 .stored.none {
   color: var(--text-4);
 }
-/* Settings: a 680px column of grouped controls on rounded working surfaces. */
+/* Settings: a compact column beside the section rail. */
 .settings {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+  align-content: start;
+  gap: 20px;
+  padding: 16px 20px;
 }
 .settings-column {
-  max-width: 760px;
-  padding: 28px 32px 56px;
-  animation: settings-in 380ms var(--spring);
+  max-width: 600px;
+  min-width: 0;
+  padding: 0 0 24px;
 }
 /* Grouped rows in rounded panels, the way macOS settings stack them. */
 .settings-column > section {
@@ -39,19 +44,19 @@
   display: flex;
   align-items: baseline;
   gap: 10px;
-  margin-bottom: 8px;
-  font-size: 20px;
+  margin-bottom: 6px;
+  font-size: calc(16px * var(--text-scale, 1));
   font-weight: 600;
-  line-height: 26px;
+  line-height: 22px;
 }
 .settings h1 span {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   font-weight: 400;
   color: var(--text-4);
 }
 .settings h2 {
-  margin: 24px 2px 8px;
-  font-size: 13px;
+  margin: 16px 0 6px;
+  font-size: calc(13px * var(--text-scale, 1));
   font-weight: 600;
   color: var(--text);
 }
@@ -84,7 +89,7 @@
   gap: 16px;
   min-height: 44px;
   padding: 7px 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   color: var(--text);
 }
 .settings-row.stacked {
@@ -99,23 +104,25 @@
 .settings-group + .note,
 .settings-group + .muted {
   margin: 8px 2px 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
 }
 .settings-action {
   margin-top: 16px;
 }
 .account-row {
-  height: 48px;
+  min-height: 44px;
+  padding: 6px 0;
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   border-bottom: 1px solid var(--line);
 }
 .account-row .provider-icon {
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale, 1));
 }
 .account-row strong {
   flex: 1;
@@ -123,11 +130,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   font-weight: 500;
 }
 .account-row > span:not(.provider-icon) {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-4);
   white-space: nowrap;
 }
@@ -142,7 +149,7 @@
   color: var(--danger);
 }
 .provider-row {
-  height: 52px;
+  min-height: 44px;
   display: flex;
   align-items: center;
 }
@@ -151,12 +158,12 @@
   height: 20px;
   margin-right: 12px;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
 }
 .provider-row strong {
   width: 130px;
   flex-shrink: 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   font-weight: 500;
 }
 .provider-row span:not(.provider-icon) {
@@ -198,11 +205,11 @@
   color: var(--text);
 }
 .rule-row {
-  min-height: 64px;
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 10px 0;
+  gap: 16px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--line);
 }
 .note + .rule-row {
@@ -213,13 +220,13 @@
   min-width: 0;
 }
 .rule-row p {
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   line-height: 1.45;
   color: var(--text);
   overflow-wrap: anywhere;
 }
 .rule-row span {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   line-height: 1.5;
   color: var(--text-4);
   overflow-wrap: anywhere;
@@ -244,7 +251,7 @@
 .setup code,
 .mcp-copy pre {
   font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--text-scale, 1));
   color: var(--text-2);
   overflow-wrap: anywhere;
 }
@@ -264,7 +271,7 @@
   border: 1px solid var(--line-2);
   border-radius: var(--radius-control);
   background: transparent;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-2);
 }
 .disclosure:hover {
@@ -295,7 +302,7 @@
   min-width: 0;
 }
 .mcp-copy strong {
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale, 1));
   font-weight: 500;
   color: var(--text);
 }
@@ -305,7 +312,7 @@
   user-select: text;
 }
 [data-interaction-settings] .settings-row :is(input, select) { width: 160px; height: 30px; padding: 0 10px; }
-[data-interaction-settings] > p { margin: 8px 2px 0; font-size: 12px; }
+[data-interaction-settings] > p { margin: 8px 2px 0; font-size: calc(12px * var(--text-scale, 1)); }
 [data-interaction-settings] [role="status"]:empty { display: none; }
 /* Settings, Appearance: theme previews, accent swatches and Transparency. */
 .theme-choices {
@@ -317,7 +324,7 @@
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-2);
   text-align: center;
 }
@@ -408,11 +415,11 @@
   resize: vertical;
   max-height: 35dvh;
   font-family: ui-monospace, monospace;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
 }
 .theme-editor .note {
   margin: 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
 }
 .theme-color > div {
   display: flex;
@@ -430,13 +437,59 @@
   width: 96px;
   padding: 5px 8px;
   font-family: ui-monospace, monospace;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
 }
 .theme-color input[aria-invalid="true"] {
   border-color: var(--danger);
 }
 .theme-error {
   color: var(--danger);
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   overflow-wrap: anywhere;
+}
+
+.settings-pane { container-type: inline-size; min-height: 0; }
+.settings:not(:has(.settings-navigation)) { grid-template-columns: minmax(0, 1fr); }
+.settings-navigation { position: sticky; top: 0; align-self: start; display: grid; gap: 3px; padding-right: 16px; border-right: 1px solid var(--line); }
+.settings-navigation button { min-width: 0; gap: 9px; min-height: 38px; padding: 8px 10px; border-radius: var(--radius-control); text-align: left; white-space: normal; justify-content: flex-start; color: var(--text-2); font-size: calc(12px * var(--text-scale, 1)); }
+.settings-navigation button svg { flex-shrink: 0; }
+.settings-navigation [aria-current="page"] { background: var(--selected); color: var(--link); font-weight: 600; }
+.settings-navigation button:hover { background: var(--hover); }
+.settings-section-heading { padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.settings-section-heading p { max-width: 55ch; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); line-height: 1.6; }
+.settings-agent-link { width: 100%; justify-content: space-between; padding: 16px; margin-bottom: 24px; height: auto; border-color: var(--line-2); background: var(--hover); white-space: normal; }
+.settings-agent-link strong { display: block; color: var(--link); font-size: calc(13px * var(--text-scale, 1)); }
+.settings-agent-link small { display: block; margin-top: 4px; color: var(--text-2); font-size: calc(12px * var(--text-scale, 1)); font-weight: 400; }
+.settings .settings-group { background: transparent; border: 0; border-radius: 0; overflow: visible; }
+.settings .settings-group > * { margin-left: 0; margin-right: 0; }
+.settings .settings-row { padding: 6px 0; }
+.settings .settings-row.stacked { padding: 8px 0; gap: 6px; }
+.settings .segmented { display: flex; flex-wrap: wrap; gap: 4px; padding: 0; border: 0; width: fit-content; max-width: 100%; }
+.settings .segmented button { min-width: 0; flex: 0 1 auto; height: auto; min-height: 30px; padding: 5px 10px; border: 1px solid var(--line-2); white-space: normal; overflow-wrap: anywhere; }
+.settings .segmented button.active { border-color: var(--accent); color: var(--link); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); box-shadow: inset 0 0 0 .5px var(--accent); }
+.settings-provider-choice { display: grid; gap: 6px; }
+.settings .settings-form { gap: 12px; margin-top: 12px; }
+.settings .reading-layouts .segmented button { display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 8px 10px; }
+.reading-layouts button::before { content: ""; width: 66px; height: 36px; border: 1px solid currentColor; border-radius: 4px; background: linear-gradient(to right, currentColor 0 32%, transparent 32% 36%, color-mix(in srgb, currentColor 18%, transparent) 36%); opacity: .5; }
+.reading-layouts button:nth-child(2)::before { background: color-mix(in srgb, currentColor 18%, transparent); }
+.settings .theme-choices { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.settings .theme-choices button { padding: 8px; border: 1px solid var(--line-2); border-radius: var(--radius-control); }
+.settings .theme-choices button.active { border-color: var(--accent); color: var(--link); }
+.settings .theme-preview { height: 46px; }
+.settings .account-row strong { flex: 1 1 110px; }
+.settings-section-heading + section > h2:first-child,
+.compose-settings > h2:first-child { margin-top: 0; }
+.settings .compose-settings-actions { gap: 8px; }
+.compose-settings-actions .note { margin: 0 auto 0 0; }
+.compose-settings-account { min-width: 0; overflow-wrap: anywhere; font-weight: 500; text-align: right; }
+.settings .compose-settings-save { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.settings-facts { margin: 0; }
+.settings-facts > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; gap: 12px; min-height: 40px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.settings-facts dt { font-weight: 500; }
+.settings-facts dd { margin: 0; color: var(--text-3); line-height: 1.5; overflow-wrap: anywhere; }
+.settings-logos .note { margin: 0 0 10px; }
+@container (max-width: 680px) {
+  .settings { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 16px; }
+  .settings-navigation { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 0 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .settings-column { padding: 0 0 32px; }
 }

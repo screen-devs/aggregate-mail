@@ -10,6 +10,9 @@ export type DraftProgress = {
 export function composeContent(value: Compose): Compose {
   return {
     accountId: value.accountId,
+    ...(value.invitation ? { invitation: structuredClone(value.invitation) } : {}),
+    ...(value.cc !== undefined ? { cc: value.cc.slice() } : {}),
+    ...(value.attachments !== undefined ? { attachments: value.attachments.map((item) => ({ ...item })) } : {}),
     to: value.to,
     subject: value.subject,
     body: value.body,
@@ -60,7 +63,7 @@ export class DraftSession {
     if (this.stored) return !same(this.content, this.stored);
     const value = this.content;
     return Boolean(value.to || value.subject || value.body || value.inReplyTo ||
-      value.threadId || value.references?.length || value.sendUnknown);
+      value.threadId || value.references?.length || value.cc?.length || value.attachments?.length || value.sendUnknown);
   }
 
   get dirty(): boolean {

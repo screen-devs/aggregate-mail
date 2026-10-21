@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -25,12 +26,15 @@ import {
 import { DatabaseSync, backup } from "node:sqlite";
 import path from "node:path";
 import type { Server } from "node:http";
+import { MailNotifications, registerNotificationIpc } from "./notifications.js";
 import { editingMenu } from "./context-menu.js";
 import { menuPosition, nativeMenuItems, overlayColors, readWindowControls, writeWindowControls, type WindowControls } from "./window-chrome.js";
-import { isExternalLink, isLocalNavigation, trustedWindowSender } from "./navigation.js";
+import { isExternalLink, isLocalNavigation, swipeNavigation, trustedWindowSender } from "./navigation.js";
 import { LEGACY_APP_NAME, migrateLegacyUserData } from "./migrate.js";
 import type { Updates } from "./updates.js";
 import { canonicalKey, readCurrentRecord, migrateLegacyKey, MIGRATION_ERROR, type CurrentRecord } from "./keychain.js";
+import { isOpenCodeCredential, openCodeConfig } from "../shared/opencode.js";
+import { setupOpenCode } from "./opencode.js";
 
 app.setName("Emc²");
 app.setAppUserModelId("dev.screen.aggregate-mail");
@@ -87,9 +91,10 @@ const rendererOrigin = developing ? "http://127.0.0.1:5173" : origin;
 const token = randomBytes(32).toString("hex");
 const checking = process.argv.includes("--check-startup");
 const showWindow = () => {
-  if (window?.isMinimized()) window.restore();
-  window?.show();
-  window?.focus();
+  if (!window || window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
 };
 const notifyMailChanged = () => {
   if (window?.isVisible() && !window.isMinimized()) window.webContents.send("mail-changed");
@@ -148,6 +153,44 @@ else {
     const colors = overlayColors(input);
     if (!window || !trustedWindowSender(event, window.webContents, rendererOrigin) || windowControls !== "windows" || !colors) return;
     window.setTitleBarOverlay({ ...colors, height: 52 });
+  });
+  ipcMain.handle("copy-mcp-endpoint", (event) => {
+    if (!window || window.isDestroyed() || !trustedWindowSender(event, window.webContents, rendererOrigin))
+      throw new Error("Clipboard request denied.");
+    return clipboard.writeText(`${origin}/mcp`);
+  });
+  // One grant's OpenCode config: composed here from a validated credential and
+  // the fixed loopback endpoint. The renderer never supplies config text.
+  ipcMain.handle("copy-opencode-config", (event, input: unknown) => {
+    if (!window || window.isDestroyed() || !trustedWindowSender(event, window.webContents, rendererOrigin) || !isOpenCodeCredential(input))
+      throw new Error("Clipboard request denied.");
+    return clipboard.writeText(openCodeConfig(input));
+  });
+  // One-button setup: the main process edits only mcp.emc2 in the user's own
+  // OpenCode config. The renderer supplies one validated credential, nothing else.
+  ipcMain.handle("setup-opencode", (event, input: unknown) => {
+    if (!window || window.isDestroyed() || !trustedWindowSender(event, window.webContents, rendererOrigin) || !isOpenCodeCredential(input))
+      throw new Error("Setup request denied.");
+    return setupOpenCode({
+      credential: input,
+      env: process.env,
+      home: app.getPath("home"),
+      confirmReplace: () => {
+        // The visible main frame and window must still be trusted before the
+        // user is asked, and the answer is read on this same frame.
+        if (!window || window.isDestroyed() || !trustedWindowSender(event, window.webContents, rendererOrigin)) return false;
+        return dialog.showMessageBoxSync(window, {
+          type: "warning",
+          buttons: ["Cancel", "Replace EMC² connection"],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+          message: "Replace the existing EMC² connection?",
+          detail: "OpenCode's config already has a different emc2 connection. Only that entry is replaced; the rest of the file is preserved and a backup is kept beside it.",
+        }) === 1;
+      },
+      revalidate: () => !!window && !window.isDestroyed() && trustedWindowSender(event, window.webContents, rendererOrigin),
+    });
   });
   // Mail rows use a native context menu; the renderer runs the chosen action.
   ipcMain.handle("mail-menu", (event, input: unknown, position: unknown) => new Promise<string | null>((resolve) => {
@@ -302,6 +345,19 @@ else {
       else delete process.env.MAIL_RENDERER_ORIGIN;
       const backend = await import("../server/index.js");
       delete process.env.MAIL_DATA_KEY;
+      const mailNotifications = new MailNotifications(path.join(dataPath, "notifications.json"), {
+        create: (options) => Notification.isSupported() ? new Notification(options) : undefined,
+        send: (channel, value) => window?.webContents.send(channel, value),
+        show: showWindow,
+        beep: () => shell.beep(),
+        choose: async () => {
+          if (!window) return;
+          const result = await dialog.showOpenDialog(window, { properties: ["openFile"],
+            filters: [{ name: "Audio", extensions: ["wav", "mp3", "ogg"] }] });
+          return result.canceled ? undefined : result.filePaths[0];
+        },
+      });
+      registerNotificationIpc(ipcMain, () => window?.webContents, rendererOrigin, mailNotifications);
       server = await backend.startServer(
         32145,
         (error) => {
@@ -309,18 +365,7 @@ else {
           showWindow();
         },
         notifyMailChanged,
-        (count) => {
-          if (checking || !Notification.isSupported()) return;
-          const notification = new Notification({
-            title: "Emc²",
-            body: `${count} new unread ${count === 1 ? "email" : "emails"}`,
-          });
-          notification.on("click", showWindow);
-          notification.on("failed", (_event, error) =>
-            console.error("Mail notification failed:", error),
-          );
-          notification.show();
-        },
+        (_count, messages) => { if (!checking) mailNotifications.arrive(messages); },
       );
       const localSession = session.fromPartition("persist:aggregate");
       localSession.webRequest.onBeforeSendHeaders(
@@ -370,6 +415,9 @@ else {
             contextIsolation: true,
             sandbox: true,
             nodeIntegration: false,
+            // Notification audio must keep playing while the tray window is hidden.
+            backgroundThrottling: false,
+            autoplayPolicy: "no-user-gesture-required",
             additionalArguments: [
               ...(checking ? ["--emc2-disable-updates"] : []),
               ...(nativeControls ? ["--emc2-window-controls=windows"] : []),
@@ -378,6 +426,8 @@ else {
             session: localSession,
           },
         });
+        const openedWindow = window;
+        window.on("closed", () => { if (window === openedWindow) window = null; });
         if (restore?.maximized) window.maximize();
         // Hidden windows catch up from the encrypted cache when shown again.
         window.on("show", notifyMailChanged);
@@ -412,6 +462,7 @@ else {
           event.preventDefault();
           window?.hide();
         });
+        window.on("closed", () => mailNotifications.loading());
         window.on("session-end", () => {
           quitting = true;
         });
@@ -428,6 +479,12 @@ else {
           if (command === "browser-backward" || command === "browser-forward")
             window?.webContents.send("mail-navigation", command === "browser-backward" ? "back" : "forward");
         });
+        window.on("swipe", (_event, direction) => {
+          const command = swipeNavigation(direction);
+          if (command) window?.webContents.send("mail-navigation", command);
+        });
+        window.webContents.on("did-start-loading", () => mailNotifications.loading());
+        window.webContents.on("render-process-gone", () => mailNotifications.loading());
         window.webContents.setWindowOpenHandler(({ url }) => {
           if (isExternalLink(url, origin)) void shell.openExternal(url);
           return { action: "deny" };

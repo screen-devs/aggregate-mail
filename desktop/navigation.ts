@@ -6,6 +6,11 @@ export function isLocalNavigation(url: string, origin: string) {
     return false;
   }
 }
+
+export function swipeNavigation(direction: string): "back" | "forward" | undefined {
+  if (direction === "right") return "back";
+  if (direction === "left") return "forward";
+}
 export function isExternalLink(url: string, origin: string) {
   try {
     const parsed = new URL(url);

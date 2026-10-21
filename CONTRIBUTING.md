@@ -69,11 +69,53 @@ npm run dev      # Electron with React/CSS hot reload; restart after desktop or 
 | Documentation only | Relative links, command names, factual claims, `git diff --check` |
 
 - Tests use `tsx --test` over `server/`, `desktop/`, `src/` and `scripts/` test files.
+  `npm test` runs files serially so mounted UI checks do not compete for CPU;
+  individual test and CI step deadlines still apply.
   Run one file with `node --import tsx --test <file>`.
 - There is no `scripts/documentation.py`; do not invent doc commands.
 - Report live sign-in, mailbox changes, sending, interactive UI and
   downloaded-app acceptance separately from automated results.
 - Follow the live-browser-testing restriction in PRODUCT.md.
+
+### Bounded local verification
+
+On shared Linux hosts, the following wrapper is required for tests and builds.
+Set `FLEET_BIN` to the verified Fleet executable supplied by the host owner.
+Do not silently install a runner or run without containment when it is missing.
+
+```sh
+test -x "$FLEET_BIN" || exit 125
+"$FLEET_BIN" verification bounded --memory-mib 2048 --timeout 120 -- \
+  env NODE_OPTIONS=--max-old-space-size=1024 \
+  node --import tsx --test src/snooze.test.tsx
+"$FLEET_BIN" verification bounded --memory-mib 3072 --timeout 180 -- \
+  env NODE_OPTIONS=--max-old-space-size=2048 npm run build
+```
+
+Replace the test path with the affected file or add `--test-name-pattern`
+before it. Run files serially. For a required full-suite check, use a bounded
+serial run after checking existing evidence:
+
+```sh
+"$FLEET_BIN" verification bounded --memory-mib 2048 --timeout 900 -- \
+  env NODE_OPTIONS=--max-old-space-size=1024 \
+  node --import tsx --test --test-concurrency=1 --test-timeout=120000 \
+  server/*.test.ts desktop/*.test.ts src/*.test.tsx scripts/*.test.mjs
+```
+
+The wrapper sets the cgroup memory limit, disables swap, applies an external
+deadline and cleans up descendants. Exit 125 means containment or cleanup
+failed. Stop and report it. After a failed test, preserve its first log,
+diagnose the first failure and run only the affected check after one bounded
+fix. Never rerun a runaway mounted test unchanged. A new session or worktree
+does not invalidate matching evidence.
+
+Record command, exit status, source/input hashes and log path. Native checks
+also need OS, architecture, artifact digest, deadline and process cleanup.
+Fleet's Linux command is not a macOS or Windows runner; use the platform's
+reviewed bounded lifecycle. Keep npm scripts portable for the CI OS matrix.
+The [journey map](docs/user-journeys.md) identifies focused checks; the
+[installed smoke recipe](docs/installed-smoke.md) defines acceptance beyond them.
 
 ## CI and releases
 

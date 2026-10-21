@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { JSDOM } from "jsdom";
-import { MessageImages, MessageText } from "./mail/MessageContent";
+import { MessageImages, MessageText, ReaderContent, type ContentResult } from "./mail/MessageContent";
 import { PrivacyContext } from "./ui/Privacy";
 import { imageSource, type MailImage } from "../shared/types";
 
@@ -164,17 +164,17 @@ test("formatted reader recovery keeps text on failure, ignores late content and 
   const { ReaderContent } = await import("./mail/MessageContent");
   const container = dom.window.document.getElementById("root")!;
   const root = createRoot(container);
-  let resolve!: (result: { html: string | null; images: MailImage[] }) => void;
+  let resolve!: (result: ContentResult) => void;
   let reject!: (error: Error) => void;
   const requested: string[] = [];
   let metadataCalls = 0;
   const loadContent = (id: string) => {
     requested.push(id);
-    return new Promise<{ html: string | null; images: MailImage[] }>((yes, no) => { resolve = yes; reject = no; });
+    return new Promise<ContentResult>((yes, no) => { resolve = yes; reject = no; });
   };
-  const render = async (id: string, privacy = false, html?: string | null) => {
+  const render = async (id: string, privacy = false, html?: string | null, images?: MailImage[]) => {
     await act(async () => root.render(<PrivacyContext.Provider value={{ on: privacy, revealed: new Set(), toggle() {} }}>
-      <ReaderContent mail={{ id, html, body: "Cached readable text" }} loadContent={loadContent}
+      <ReaderContent mail={{ id, html, images, body: "Cached readable text", attachments: html === null ? [] : undefined }} loadContent={loadContent}
         loadImages={async () => { metadataCalls++; return { images: [image] }; }} />
     </PrivacyContext.Provider>));
   };
@@ -204,6 +204,14 @@ test("formatted reader recovery keeps text on failure, ignores late content and 
     await act(async () => button("Hide images").click());
     await render("formatted", false);
     assert.equal(container.querySelector("img"), null, "disabling privacy does not grant consent again");
+    await render("empty-after-retry", false, undefined, []);
+    await act(async () => reject(new Error("offline")));
+    assert.ok(button("Show images"), "content failure keeps the image control available");
+    assert.ok(container.querySelector('[aria-label="Attachments"]'), "unknown attachments stay explicit");
+    await act(async () => button("Try again").click());
+    await act(async () => resolve({ html: null, images: [], attachments: [] }));
+    assert.equal(container.querySelector('.image-controls'), null);
+    assert.equal(container.querySelector('[aria-label="Attachments"]'), null);
   } finally {
     await act(async () => root.unmount()); dom.window.close();
     for (const [key, descriptor] of descriptors) {
@@ -295,4 +303,24 @@ test("fallback image metadata keeps truncated private tokens out of alt and load
       if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key);
     }
   }
+});
+
+test("reader hides known-empty metadata but retains consent for unknown metadata and HTML images", () => {
+  for (const [name, html, images, controls] of [
+    ["known plain text", null, [], false],
+    ["known HTML without images", "<p>Text</p>", [], false],
+    ["HTML image despite empty extracted metadata", `<p>Text<img src="${image.src}"></p>`, [], true],
+    ["unknown HTML", undefined, [], true],
+    ["unknown image metadata", null, undefined, true],
+  ] as const) {
+    const markup = renderToStaticMarkup(<ReaderContent mail={{ id: name, html, images: images ? [...images] : undefined, attachments: [], body: "Cached text" }}
+      loadContent={async () => ({ html: null, images: [], attachments: [] })} loadImages={async () => ({ images: [] })} />);
+    assert.equal(markup.includes('class="image-controls"'), controls, name);
+    assert.ok(!markup.includes('aria-label="Attachments"'), name);
+    assert.ok(markup.includes("Cached text") || markup.includes("Text"), name);
+  }
+  const unknown = renderToStaticMarkup(<ReaderContent mail={{ id: "unknown", html: null }}
+    loadContent={async () => { throw Error("synthetic"); }} loadImages={async () => ({ images: [] })} />);
+  assert.ok(unknown.includes('aria-label="Attachments"'));
+  assert.ok(unknown.includes("Attachment metadata is not yet available"));
 });

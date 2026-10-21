@@ -1,4 +1,4 @@
-import type { State } from "../shared/types";
+import type { MailChanges, State } from "../shared/types";
 
 function reuseRecords<T>(current: T[], incoming: T[], key: (record: T) => string) {
   const previous = new Map(current.map((record) => [key(record), record]));
@@ -11,14 +11,25 @@ function reuseRecords<T>(current: T[], incoming: T[], key: (record: T) => string
 }
 
 // Fresh snapshots keep unchanged records stable so polling need not redraw mail.
-export function reuseMailState(current: State, incoming: State): State {
+export function reuseMailState(current: State, incoming: State & Partial<MailChanges>): State {
+  const { mailMode, mailCursor: _cursor, removedMailIds = [], ...snapshot } = incoming;
+  let messages = current.messages;
+  if (mailMode === "snapshot") messages = incoming.messages;
+  else if (mailMode === "delta" && (incoming.messages.length || removedMailIds.length)) {
+    const changed = new Map(incoming.messages.map(mail => [mail.id, mail]));
+    const removed = new Set(removedMailIds);
+    messages = current.messages.filter(mail => !removed.has(mail.id)).map(mail => {
+      const next = changed.get(mail.id); changed.delete(mail.id); return next ?? mail;
+    });
+    messages.push(...changed.values());
+  } else if (!mailMode) messages = reuseRecords(current.messages, incoming.messages, mail => mail.id);
   const next = {
-    ...incoming,
+    ...snapshot,
     ...(incoming.composePreferences ? { composePreferences:
       JSON.stringify(current.composePreferences) === JSON.stringify(incoming.composePreferences)
         ? current.composePreferences : incoming.composePreferences } : {}),
     accounts: reuseRecords(current.accounts, incoming.accounts, (account) => account.id),
-    messages: reuseRecords(current.messages, incoming.messages, (mail) => mail.id),
+    messages,
     labels: reuseRecords(current.labels, incoming.labels, (label) => `${label.accountId}:${label.id}`),
     rules: reuseRecords(current.rules, incoming.rules, (rule) => rule.id),
   };

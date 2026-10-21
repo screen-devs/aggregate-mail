@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { jevProviders, type JevProvider } from "../../shared/types";
 import type { Api, Perform } from "../api";
-import { Dropdown } from "../ui/Dropdown";
+import { Segmented } from "../ui/Segmented";
 import { Address } from "../ui/Privacy";
 import { Check } from "../ui/icons";
 
@@ -34,6 +34,7 @@ export function ConfigurationForm({
   jevConfigured: boolean;
   jevProvider: JevProvider;
 }) {
+  const providerId = useId();
   const [provider, setProvider] = useState(jevProvider);
   return (
     <form
@@ -81,19 +82,11 @@ export function ConfigurationForm({
         />
       </label>
       <StoredValue present={googleConfigured} />
-      <label>
-        Decision model provider
-        <Dropdown
-          label="Decision model provider"
-          value={provider}
-          disabled={busy}
-          onChange={setProvider}
-          options={(Object.keys(jevProviders) as JevProvider[]).map((key) => ({
-            value: key,
-            label: jevProviders[key].name,
-          }))}
-        />
-      </label>
+      <div className="settings-provider-choice">
+        <span id={providerId}>Decision model provider</span>
+        <Segmented labelledBy={providerId} value={provider} disabled={() => busy} onChange={setProvider}
+          choices={(Object.keys(jevProviders) as JevProvider[]).map((id) => ({ id, label: jevProviders[id].name }))} />
+      </div>
       <label>
         {jevProviders[provider].name} API key
         <input

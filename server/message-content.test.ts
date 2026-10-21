@@ -53,7 +53,7 @@ test("Gmail recovers one stable raw message, including archived mail, without do
   assert.deepEqual(calls, []);
   assert.equal(cached[0].unread, true);
   calls.length = 0;
-  assert.deepEqual(await providers.gmail.content(account, { ...mail, archived: true }), { html, images: [image] });
+  assert.deepEqual(await providers.gmail.content(account, { ...mail, archived: true }), { html, images: [image], attachments: [] });
   assert.deepEqual(calls, [{ userId: "me", id: "abc", format: "raw" }]);
 });
 
@@ -83,7 +83,7 @@ test("IMAP content recovery refuses archives before connecting and verifies UIDV
   await assert.rejects(providers.imap.content(imapAccount, imapMail), /identifiers changed/);
   assert.equal(fetches, 0);
   validity = "123";
-  assert.deepEqual(await providers.imap.content(imapAccount, imapMail), { html, images: [image] });
+  assert.deepEqual(await providers.imap.content(imapAccount, imapMail), { html, images: [image], attachments: [] });
   mime = source(html, "<different@example.com>");
   await assert.rejects(providers.imap.content(imapAccount, imapMail), /identity changed/);
   assert.equal(releases, 3);
@@ -105,7 +105,7 @@ test("content API authenticates, caches encrypted content and preserves concurre
   const route = `${base}/api/messages/${encodeURIComponent(mail.id)}/content`;
   const desktop = { "X-Desktop-Token": "test-only-content-token" };
   let calls = 0;
-  t.mock.method(providers.gmail, "content", async () => { calls++; return { html, images: [image] }; });
+  t.mock.method(providers.gmail, "content", async () => { calls++; return { html, images: [image], attachments: [] }; });
   const state = await (await fetch(`${base}/api/state`, { headers: desktop })).json() as { csrf: string };
   const authorized = { ...desktop, "X-CSRF-Token": state.csrf };
   const request = () => fetch(route, { method: "POST", headers: authorized });
@@ -121,10 +121,10 @@ test("content API authenticates, caches encrypted content and preserves concurre
     assert.equal(stored().body, mail.body);
     assert.deepEqual(stored().images, [image]);
     assert.equal(all("mail").find((m) => m.id === "synthetic:other")?.html, undefined);
-    assert.deepEqual(await (await request()).json(), { html, images: [image] });
+    assert.deepEqual(await (await request()).json(), { html, images: [image], attachments: [] });
     assert.equal(calls, 1);
-    put("mail", mail.id, { ...mail, html: null, images: [] });
-    assert.deepEqual(await (await request()).json(), { html: null, images: [] });
+    put("mail", mail.id, { ...mail, html: null, images: [], attachments: [] });
+    assert.deepEqual(await (await request()).json(), { html: null, images: [], attachments: [] });
     assert.equal(calls, 1);
     const rawStore = Buffer.concat([readFileSync(path.join(directory, "mail.sqlite")), readFileSync(path.join(directory, "mail.sqlite-wal"))]);
     assert.equal(rawStore.includes(Buffer.from(html)), false);
@@ -156,9 +156,9 @@ test("content API authenticates, caches encrypted content and preserves concurre
       t.mock.method(providers.gmail, "content", async () => {
         put("mail", mail.id, { ...mail, unread: false, archived: true, snoozedUntil: 1900000000000,
           images: [], html: "<p>Concurrent HTML</p>" });
-        return { html, images: [image] };
+        return { html, images: [image], attachments: [] };
       });
-      assert.deepEqual(await (await request()).json(), { html: "<p>Concurrent HTML</p>", images: [] });
+      assert.deepEqual(await (await request()).json(), { html: "<p>Concurrent HTML</p>", images: [], attachments: [] });
       assert.equal(stored().unread, false);
       assert.equal(stored().archived, true);
       assert.equal(stored().snoozedUntil, 1900000000000);
@@ -170,7 +170,7 @@ test("content API authenticates, caches encrypted content and preserves concurre
       let finish!: () => void, entered!: () => void;
       const pending = new Promise<void>((resolve) => { finish = resolve; });
       const started = new Promise<void>((resolve) => { entered = resolve; });
-      t.mock.method(providers.gmail, "content", async () => { entered(); await pending; return { html, images: [image] }; });
+      t.mock.method(providers.gmail, "content", async () => { entered(); await pending; return { html, images: [image], attachments: [] }; });
       t.mock.method(providers.gmail, "images", async () => []);
       const content = request();
       try {
@@ -178,7 +178,7 @@ test("content API authenticates, caches encrypted content and preserves concurre
         const images = await fetch(`${base}/api/messages/${encodeURIComponent(mail.id)}/images`, { method: "POST", headers: authorized });
         assert.equal(images.status, 200);
         finish();
-        assert.deepEqual(await (await content).json(), { html, images: [] });
+        assert.deepEqual(await (await content).json(), { html, images: [], attachments: [] });
         assert.deepEqual(stored().images, []);
       } finally { finish(); await content; }
     });
@@ -188,7 +188,7 @@ test("content API authenticates, caches encrypted content and preserves concurre
       t.mock.method(providers.gmail, "content", async () => {
         if (change === "removed") remove("mail", mail.id);
         else put("mail", mail.id, { ...mail, remoteId: "replacement" });
-        return { html, images: [image] };
+        return { html, images: [image], attachments: [] };
       });
       assert.equal((await request()).status, 400);
       assert.equal(stored()?.html, undefined);

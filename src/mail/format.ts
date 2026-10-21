@@ -1,17 +1,30 @@
 import type { MailLocation } from "../navigation";
 import { inboxTabs, type InboxTab } from "../../shared/inbox-tabs";
-import { Archive, Bell, Clock, Inbox, Megaphone, Newspaper, Receipt, Users } from "../ui/icons";
+import { Archive, Bell, Clock, Inbox, Megaphone, Newspaper, Receipt, Users, Check, Reply, Calendar } from "../ui/icons";
 
 export type View = MailLocation["view"];
-export const viewOrder: View[] = ["inbox", "snoozed", "archive"];
+export const viewOrder: View[] = ["actions", "calendar", "projects", "agents", "inbox", "snoozed", "archive", "sent", "all", "drafts"];
 // Sidebar order matches the view order used for pane motion.
 export const sidebarViews = [
+  { view: "actions", Icon: Check },
+  { view: "calendar", Icon: Calendar },
+  { view: "projects", Icon: Users },
+  { view: "agents", Icon: Users },
   { view: "inbox", Icon: Inbox },
   { view: "snoozed", Icon: Clock },
   { view: "archive", Icon: Archive },
+  { view: "sent", Icon: Reply },
+  { view: "all", Icon: Inbox },
 ] as const;
 
 export const viewNames: Record<View, string> = {
+  actions: "Today",
+  calendar: "Calendar",
+  projects: "Projects",
+  agents: "Agent review",
+  drafts: "Drafts",
+  sent: "Sent",
+  all: "All cached",
   inbox: "Inbox",
   snoozed: "Snoozed",
   archive: "Archive",

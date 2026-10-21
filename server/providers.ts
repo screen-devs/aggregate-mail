@@ -1,13 +1,16 @@
+import { parseICalendar, generateICalendar } from "./ical.js";
 import { google } from "googleapis";
+import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { Parser } from "htmlparser2";
 import { imageSource } from "../shared/types.js";
-import { boundedMailHtml } from "../shared/mail-content.js";
+import { boundedMailHtml, previewText } from "../shared/mail-content.js";
 import nodemailer from "nodemailer";
 import MailComposer from "nodemailer/lib/mail-composer/index.js";
 import { z } from "zod";
-import type { GmailLabel, Mail, MailImage, Provider, SyncFailure } from "../shared/types.js";
+import type { GmailLabel, Mail, MailImage, MailAttachment, Provider, SyncFailure } from "../shared/types.js";
 import type { StoredAccount } from "./store.js";
 
 export class SyncError extends Error {
@@ -178,7 +181,7 @@ export function imap(a: StoredAccount, watch = false) {
   });
   return client;
 }
-type Incoming = Omit<
+export type Incoming = Omit<
   Mail,
   "category" | "relevance" | "reason" | "archived" | "snoozedUntil"
 >;
@@ -192,7 +195,27 @@ export async function parse(
   const m = await simpleParser(source, { skipImageLinks: true });
   const from = m.from?.value[0];
   const body = m.text || "";
+  let total = 0;
+  const attachments = await Promise.all(m.attachments.map(async (attachment, index) => {
+    const filename = attachment.filename || "attachment";
+    const contentType = attachment.contentType || "application/octet-stream";
+    const id = createHash("sha256").update(`${a.id}:${remoteId}:${index}:`).update(attachment.content).digest("hex");
+    total += attachment.content.length;
+    const eligible = index < 10 && attachment.content.length <= 524288 && total <= 1048576;
+    const content = eligible ? attachment.content.toString("base64") : "";
+    let valid = eligible && attachmentSchema.safeParse({ filename, contentType, content }).success;
+    if (valid) {
+      const { get, put } = await import("./store.js");
+      const current = get("account", a.id);
+      valid = Boolean(current && current.id === a.id && current.provider === a.provider && current.email === a.email && isDeepStrictEqual(current.credentials, a.credentials));
+      if (valid) put("attachment", `${a.id}:${remoteId}:${id}`, { accountId: a.id, content });
+    }
+    return { id, filename: filename.replace(/[\u0000-\u001f\u007f/\\]/g, "_").slice(0, 255), contentType: /^[\w!#$&^.+-]+\/[\w!#$&^.+-]+$/.test(contentType) ? contentType : "application/octet-stream", size: attachment.size, ...(!valid ? { unavailable: true } : {}) };
+  }));
+  const calendars = m.attachments.filter((part) => part.contentType.toLowerCase() === "text/calendar");
+  const invitation = calendars.length > 1 ? { status: "unsupported" as const, reason: "multiple-calendars" } : calendars.length ? calendars[0].content.length > 131072 ? { status: "invalid" as const, reason: "limit" } : parseICalendar(calendars[0].content.toString("utf8")) : undefined;
   return {
+    invitation,
     id: `${a.id}:${remoteId}`,
     accountId: a.id,
     remoteId,
@@ -202,13 +225,15 @@ export async function parse(
       ? m.to.map((x) => x.text).join(", ")
       : m.to?.text || a.email,
     subject: m.subject || "(No subject)",
-    preview: body.replace(/\s+/g, " ").slice(0, 220),
+    preview: previewText(body).slice(0, 220),
     body,
     images: extractImages(m.html || ""),
     html: boundedMailHtml(m.html),
     date: date || m.date?.getTime() || Date.now(),
     unread,
     messageId: m.messageId,
+    inReplyTo: m.inReplyTo,
+    attachments,
     cc: Array.isArray(m.cc) ? m.cc.map((x) => x.text).join(", ") : m.cc?.text,
     replyTo: m.replyTo?.value[0]?.address,
     references:
@@ -246,9 +271,11 @@ export class SentCopyError extends Error {}
 export const providers: Record<
   Provider,
   {
+    sent: (a: StoredAccount, bound: number) => Promise<{ messages: Incoming[]; truncated: boolean }>;
+    thread?: (a: StoredAccount, threadId: string) => Promise<Incoming[]>;
     list: (a: StoredAccount, cached: Map<string, Mail>, onBatch?: (batch: Incoming[]) => void, onWarning?: (warning: SyncFailure) => void, labels?: GmailLabel[]) => Promise<Incoming[]>;
     images: (a: StoredAccount, m: Mail) => Promise<MailImage[]>;
-    content: (a: StoredAccount, m: Mail) => Promise<{ html: string | null; images: MailImage[] }>;
+    content: (a: StoredAccount, m: Mail) => Promise<{ html: string | null; images: MailImage[]; attachments?: MailAttachment[]; invitation?: Mail["invitation"] }>;
     update: (
       a: StoredAccount,
       m: Mail,
@@ -256,8 +283,46 @@ export const providers: Record<
     ) => Promise<void>;
     send: (a: StoredAccount, input: SendInput) => Promise<void>;
   }
-> = {
+> & { gmail: { thread: (a: StoredAccount, threadId: string) => Promise<Incoming[]> } } = {
   gmail: {
+    async sent(a, bound) {
+      z.number().int().min(1).max(100).parse(bound);
+      const api = gmail(a);
+      const messages: Incoming[] = [];
+      let pageToken: string | undefined;
+      const pages = new Set<string | undefined>();
+      do {
+        if (pages.has(pageToken) || pages.size >= 100) throw new Error("Sent listing exceeded its retrieval bound.");
+        pages.add(pageToken);
+        const page = await syncOperation(a.provider, "list", () => api.users.messages.list({ userId: "me", labelIds: ["SENT"], maxResults: bound - messages.length, pageToken }, { timeout: 30000, retry: false }));
+        if ((page.data.messages?.length || 0) > bound - messages.length) throw new Error("Sent listing exceeded its retrieval bound.");
+        for (const item of page.data.messages || []) {
+          if (!item.id || messages.some((m) => m.remoteId === item.id)) throw new Error("Sent email identity is unavailable.");
+          const result = await syncOperation(a.provider, "read", () => api.users.messages.get({ userId: "me", id: item.id!, format: "raw" }, { timeout: 30000, retry: false }));
+          if (!result.data.raw || (result.data.id && result.data.id !== item.id) || !result.data.labelIds?.includes("SENT")) throw new Error("Sent email source or identity is unavailable.");
+          messages.push({ ...(await parse(a, item.id, Buffer.from(result.data.raw, "base64url"), false, Number(result.data.internalDate))), direction: "sent", threadId: result.data.threadId || item.threadId || undefined, labelIds: result.data.labelIds || [] });
+          if (messages.length >= bound) break;
+        }
+        pageToken = page.data.nextPageToken || undefined;
+      } while (pageToken && messages.length < bound);
+      return { messages, truncated: !!pageToken };
+    },
+    async thread(a, threadId) {
+      z.string().min(1).max(100).regex(/^[\w-]+$/).parse(threadId);
+      const api = gmail(a);
+      const result = await syncOperation(a.provider, "read", () => api.users.threads.get({ userId: "me", id: threadId, format: "minimal" }, { timeout: 30000, retry: false }));
+      const items = result.data.messages || [];
+      if (items.length > 100) throw new Error("This conversation exceeds the 100 message retrieval bound.");
+      const messages: Incoming[] = [];
+      for (const item of items) {
+        if (!item.id) throw new Error("Conversation email identity is unavailable.");
+        const message = await syncOperation(a.provider, "read", () => api.users.messages.get({ userId: "me", id: item.id!, format: "raw" }, { timeout: 30000, retry: false }));
+        if (!message.data.raw) throw new Error("Conversation email source is unavailable.");
+        if (message.data.threadId !== threadId) throw new Error("Conversation identity changed. Sync before opening it.");
+        messages.push({ ...(await parse(a, item.id, Buffer.from(message.data.raw, "base64url"), message.data.labelIds?.includes("UNREAD") || false, Number(message.data.internalDate))), direction: message.data.labelIds?.includes("SENT") && !message.data.labelIds?.includes("INBOX") ? "sent" : "received", threadId, labelIds: message.data.labelIds || [] });
+      }
+      return messages;
+    },
     async list(a, cached, onBatch, _onWarning, labels) {
       const auth = oauth();
       auth.setCredentials({ refresh_token: a.credentials.refreshToken });
@@ -360,7 +425,7 @@ export const providers: Record<
       });
       if (!result.data.raw) throw new Error("Email source is unavailable.");
       const parsed = await parse(a, m.remoteId, Buffer.from(result.data.raw, "base64url"), m.unread);
-      return { html: parsed.html ?? null, images: parsed.images! };
+      return { html: parsed.html ?? null, images: parsed.images!, attachments: parsed.attachments, ...(parsed.invitation ? { invitation: parsed.invitation } : {}) };
     },
     async update(a, m, action) {
       if (action === "trash") {
@@ -376,6 +441,7 @@ export const providers: Record<
       });
     },
     async send(a, input) {
+      input = sendSchema.parse(input);
       const raw = await new MailComposer({
         from: a.email,
         to: input.to,
@@ -384,6 +450,8 @@ export const providers: Record<
         text: input.body,
         inReplyTo: input.inReplyTo,
         references: input.references || input.inReplyTo,
+        icalEvent: await calendarMime(a, input),
+        attachments: input.attachments?.map((attachment) => ({ ...attachment, content: Buffer.from(attachment.content, "base64") })),
       })
         .compile()
         .build();
@@ -417,6 +485,35 @@ function smtp(a: StoredAccount) {
 }
 function imapProvider() {
   return {
+    async sent(a: StoredAccount, bound: number) {
+      z.number().int().min(1).max(100).parse(bound);
+      const client = imap(a);
+      try {
+        await imapOperation(client, () => client.connect());
+        const folders = await imapOperation(client, () => client.list());
+        const sent = folders.filter((folder) => [...folder.flags].some((flag) => flag.toLowerCase() === "\\sent"));
+        if (sent.length !== 1 || !sent[0].path || sent[0].path.toUpperCase() === "INBOX") throw new Error("A unique server-declared Sent folder is unavailable.");
+        const mailbox = sent[0].path;
+        const lock = await imapOperation(client, () => client.getMailboxLock(mailbox));
+        try {
+          if (!client.mailbox || client.mailbox.path !== mailbox) throw new Error("Sent mailbox identity is unavailable.");
+          const { exists, uidValidity, uidNext } = client.mailbox;
+          if (!Number.isSafeInteger(exists) || exists < 0 || !/^[1-9]\d*$/.test(String(uidValidity))) throw new Error("Sent mailbox identity is unavailable.");
+          const messages: Incoming[] = [];
+          if (exists) for await (const item of imapFetch(client, `${Math.max(1, exists - bound + 1)}:*`, { uid: true, source: true, flags: true })) {
+            if (!item.source || !item.flags || !Number.isSafeInteger(item.uid) || item.uid < 1 || item.uid > 4294967295 || messages.length >= bound) throw new Error("Sent email source or identity is unavailable.");
+            const remoteId = `sent:${Buffer.from(mailbox).toString("base64url")}:${uidValidity}:${item.uid}`;
+            if (messages.some((m) => m.remoteId === remoteId)) throw new Error("Sent mailbox changed during retrieval.");
+            messages.push({ ...(await parse(a, remoteId, item.source, !item.flags.has("\\Seen"))), direction: "sent", mailbox: { path: mailbox, uidValidity: String(uidValidity), uid: item.uid } });
+          }
+          if (!client.mailbox || client.mailbox.exists !== exists || client.mailbox.uidValidity !== uidValidity || client.mailbox.uidNext !== uidNext || messages.length !== Math.min(exists, bound)) throw new Error("Sent mailbox changed during retrieval.");
+          return { messages, truncated: exists > bound };
+        } finally { lock.release(); }
+      } finally {
+        if (client.usable) await imapOperation(client, () => client.logout());
+        else client.close();
+      }
+    },
     async list(a: StoredAccount, cached: Map<string, Mail>, onBatch?: (batch: Incoming[]) => void, onWarning?: (warning: SyncFailure) => void) {
       const client = imap(a);
       let phase: SyncFailure["phase"] = "connect";
@@ -498,6 +595,7 @@ function imapProvider() {
       return (await providers[a.provider].content(a, m)).images;
     },
     async content(a: StoredAccount, m: Mail) {
+      if (m.direction === "sent" || m.mailbox || m.remoteId.startsWith("sent:")) throw new Error("Content recovery for this Sent email is unsupported. Sync Sent again.");
       // An archived UID belongs to the old INBOX, never to the archive folder.
       if (m.archived) throw new Error("Content is unavailable for this older archived IMAP email.");
       const identifiers = /^(\d+):([1-9]\d*)$/.exec(m.remoteId);
@@ -514,7 +612,7 @@ function imapProvider() {
           const parsed = await parse(a, m.remoteId, result.source, m.unread);
           if (m.messageId && parsed.messageId !== m.messageId)
             throw new Error("Email identity changed. Content was not loaded.");
-          return { html: parsed.html ?? null, images: parsed.images! };
+          return { html: parsed.html ?? null, images: parsed.images!, attachments: parsed.attachments, ...(parsed.invitation ? { invitation: parsed.invitation } : {}) };
         } finally {
           lock.release();
         }
@@ -524,6 +622,7 @@ function imapProvider() {
       }
     },
     async update(a: StoredAccount, m: Mail, action: "archive" | "read" | "trash") {
+      if (m.direction === "sent" || m.mailbox || m.remoteId.startsWith("sent:")) throw new Error("Changing this Sent email is unsupported. Change it in your provider.");
       const identifiers = /^(\d+):([1-9]\d*)$/.exec(m.remoteId);
       if (action === "trash" && (!identifiers ||
         identifiers.slice(1).some((value) => !Number.isSafeInteger(Number(value)) || Number(value) < 1 || Number(value) > 4294967295)))
@@ -634,6 +733,7 @@ function imapProvider() {
       }
     },
     async send(a: StoredAccount, input: SendInput) {
+      input = sendSchema.parse(input);
       const raw = await new MailComposer({
         from: a.email,
         to: input.to,
@@ -642,6 +742,8 @@ function imapProvider() {
         text: input.body,
         inReplyTo: input.inReplyTo,
         references: input.references || input.inReplyTo,
+        icalEvent: await calendarMime(a, input),
+        attachments: input.attachments?.map((attachment) => ({ ...attachment, content: Buffer.from(attachment.content, "base64") })),
       })
         .compile()
         .build();
@@ -682,29 +784,61 @@ function imapProvider() {
     },
   };
 }
+export const attachmentSchema = z.object({
+  filename: z.string().min(1).max(255).refine((value) => !/[\u0000-\u001f\u007f/\\:]/.test(value) && value !== "." && value !== "..", "Attachment filename is unsafe"),
+  contentType: z.string().max(127).regex(/^[\w!#$&^.+-]+\/[\w!#$&^.+-]+$/),
+  content: z.string().max(699052).refine((value) => /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value) && Buffer.from(value, "base64").toString("base64") === value && Buffer.from(value, "base64").length <= 524288, "Attachment content must be canonical base64 of at most 512 KiB"),
+}).strict();
+export const attachmentsSchema = z.array(attachmentSchema).max(10).refine((attachments) => attachments.reduce((size, attachment) => size + Buffer.from(attachment.content, "base64").length, 0) <= 1048576, "Attachments exceed 1 MiB total");
 export const sendSchema = z.object({
   accountId: z.string(),
+  calendarDraft: z.object({ id: z.uuid(), revision: z.number().int().min(1) }).strict().optional(),
   to: z.email().max(320),
   cc: z.array(z.email().max(320)).max(100).optional(),
+  attachments: attachmentsSchema.optional(),
   references: z
     .array(
       z
         .string()
         .max(998)
-        .refine((v) => !/[\r\n]/.test(v)),
+        .refine((v) => !/[\u0000-\u001f\u007f]/.test(v)),
     )
     .max(100)
     .optional(),
   subject: z
     .string()
     .max(998)
-    .refine((v) => !/[\r\n]/.test(v), "Subject must be one line"),
+    .refine((v) => !/[\u0000-\u001f\u007f]/.test(v), "Subject must be one line"),
   body: z.string().min(1).max(1000000),
   inReplyTo: z
     .string()
     .max(998)
-    .refine((v) => !/[\r\n]/.test(v))
+    .refine((v) => !/[\u0000-\u001f\u007f]/.test(v))
     .optional(),
   threadId: z.string().max(100).optional(),
-});
+}).refine((input) => Buffer.byteLength(JSON.stringify(input), "utf8") <= 1900000, "Message exceeds the request size limit");
 export type SendInput = z.infer<typeof sendSchema>;
+
+// Resolve encrypted, reviewed metadata instead of accepting calendar text from a send caller.
+export async function calendarMime(account: StoredAccount, input: SendInput) {
+  if (!input.calendarDraft) return undefined;
+  const { get } = await import("./store.js");
+  const draft = get("draft", input.calendarDraft.id);
+  if (!draft || draft.accountId !== account.id || draft.revision !== input.calendarDraft.revision || !draft.sendUnknown || !draft.invitation ||
+      draft.to !== input.to || !isDeepStrictEqual(draft.cc || [], input.cc || []) || draft.subject !== input.subject || draft.body !== input.body)
+    throw new Error("Invitation draft changed. Recover the saved draft before sending.");
+  const context = draft.calendarContext;
+  const event = context && get("calendarEvent", context.eventId);
+  if (!context || !event || event.accountId !== account.id || event.revision !== context.revision || event.sequence !== draft.invitation.sequence) throw new Error("Calendar event changed. Review it before sending this draft.");
+  if (context.sourceMailId) {
+    const mail = get("mail", context.sourceMailId);
+    const fingerprint = mail && createHash("sha256").update(JSON.stringify([mail.id, mail.accountId, mail.remoteId, mail.messageId, mail.address, mail.invitation])).digest("hex");
+    if (!mail || mail.accountId !== account.id || fingerprint !== context.sourceFingerprint) throw new Error("Invitation source changed. Reopen it before replying.");
+  }
+  if (!isDeepStrictEqual(draft.attachments || [], input.attachments || [])) throw new Error("Invitation attachments changed. Recover the draft before sending.");
+  const invitation = draft.invitation;
+  const own = account.email.toLowerCase();
+  if (invitation.method === "REPLY" ? invitation.attendees.length !== 1 || invitation.attendees[0].email.toLowerCase() !== own : invitation.organizer.toLowerCase() !== own)
+    throw new Error("The invitation belongs to another account.");
+  return { method: invitation.method, filename: "invitation.ics", content: generateICalendar(invitation, { stamp: new Date().toISOString().replace(/\.\d{3}Z$/, ".000Z"), replyingAttendee: invitation.method === "REPLY" ? account.email : undefined }) };
+}

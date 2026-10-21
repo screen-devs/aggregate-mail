@@ -23,7 +23,8 @@ export type MenuAction = {
   run: () => void;
 };
 
-export function ContextMenu({ x, y, anchor, actions, onClose }: {
+export function ContextMenu({ x, y, anchor, actions, onClose, label = "Message actions" }: {
+  label?: string;
   x: number;
   y: number;
   anchor: Pick<HTMLElement, "focus">;
@@ -61,7 +62,7 @@ export function ContextMenu({ x, y, anchor, actions, onClose }: {
       ref={root}
       className="mail-menu"
       role="menu"
-      aria-label="Message actions"
+      aria-label={label}
       style={{ left: x, top: y }}
       onContextMenu={(event) => event.preventDefault()}
       onKeyDown={(event) => {

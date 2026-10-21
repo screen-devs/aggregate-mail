@@ -11,6 +11,7 @@ import { PrivacyContext } from "./ui/Privacy";
 
 test("Disconnect warns before permanently deleting drafts and honors cancellation", async () => {
   const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/" });
+  dom.window.HTMLElement.prototype.scrollTo = function (options?: ScrollToOptions | number) { if (typeof options === "object") this.scrollTop = options.top || 0; };
   const prompts: string[] = [], requests: string[] = [];
   let approved = false;
   const globals = { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true,
@@ -42,7 +43,10 @@ test("Disconnect warns before permanently deleting drafts and honors cancellatio
     await act(async () => disconnect.click());
     assert.deepEqual(requests, ["DELETE /accounts/synthetic"]);
     await render("about");
-    assert.match(container.textContent!, /Disconnect permanently deletes.*local drafts/i);
+    const warning = [...container.querySelectorAll("dt")].find(node => node.textContent === "Disconnect")?.nextElementSibling?.textContent || "";
+    assert.match(warning, /permanently deletes.*local drafts/i);
+    assert.match(warning, /may already have been sent/i);
+    assert.match(warning, /provider mailbox stays intact/i);
   } finally {
     await act(async () => root.unmount());
     dom.window.close();

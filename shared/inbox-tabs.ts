@@ -1,3 +1,4 @@
+import { matchingRule, type RuleMail, type RuleMatch } from "./rules.js";
 import type { Mail, Rule } from "./types.js";
 
 // Inbox categories, in display order. Primary is the default for anything unsure.
@@ -11,7 +12,7 @@ export const inboxTabs = [
 ] as const;
 export type InboxTab = (typeof inboxTabs)[number]["id"];
 
-type Classified = Pick<Mail, "address" | "sender" | "subject" | "preview" | "reason" | "labelIds">;
+type Classified = RuleMail & Pick<Mail, "sender" | "reason" | "labelIds">;
 
 // Codes, sign-in and security notices, support threads and replies always need the user.
 const personal = /verification|verify|one[- ]time|\botp\b|passcode|security (alert|code|notice)|new sign[- ]?in|(sign[- ]?in|log[- ]?in) (attempt|alert|code|link|request)|(reset|change|forgot)\w* (your )?password|password (reset|change)|two[- ]factor|\b2fa\b|\bcode\b[^.]{0,20}\d{4,}|\d{4,}[^.]{0,20}\bcode\b|support (ticket|request|case)|\bticket\s*#|\bcase\s*#|^(re|fwd?):/i;
@@ -47,9 +48,9 @@ const updates = /notification|alert|reminder|update|status|activity|job alert|ne
  * sender important, personal mail (codes, security, support, replies), Gmail's
  * own category, the AI sorter's reason, then sender and subject patterns.
  */
-export function inboxTab(mail: Classified, rules: Pick<Rule, "sender" | "category">[] = []): InboxTab {
+export function inboxTab(mail: Classified, rules: (RuleMatch & Pick<Rule, "category">)[] = []): InboxTab {
   const address = mail.address.toLowerCase();
-  if (rules.some((rule) => rule.category === "important" && rule.sender.toLowerCase() === address)) return "primary";
+  if (matchingRule(mail, rules)?.category === "important") return "primary";
   const text = `${mail.subject} ${mail.preview}`;
   if (personal.test(mail.subject) || personal.test(text)) return "primary";
   for (const id of mail.labelIds || []) if (gmailCategories[id]) return gmailCategories[id];

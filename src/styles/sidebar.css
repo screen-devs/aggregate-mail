@@ -1,14 +1,14 @@
-/* The sidebar source list and the sliding markers shared with tabs and Settings. */
-/* A source list in the macOS sense: plain rows, one quiet wash for the current item. */
+/* Persistent V2 navigation and the shared sliding selection. */
 .sidebar {
   width: var(--sidebar);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 88%, var(--raised));
+  border-right: 1px solid var(--line);
   transition:
-    width 460ms var(--spring),
+    width 220ms var(--ease-out),
     opacity 220ms var(--ease-out);
 }
 .sidebar.closed {
@@ -30,7 +30,7 @@
   flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 4px 10px 10px;
+  padding: 4px 12px 12px;
   animation: sidebar-swap 280ms var(--ease-out);
 }
 .sliding-nav {
@@ -42,7 +42,7 @@
   left: 0;
   right: 0;
   border-radius: var(--radius-control);
-  background: var(--selected);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   pointer-events: none;
 }
 .sliding-wash.animate {
@@ -99,7 +99,7 @@
   gap: 7px;
   padding: 0 12px;
   border-radius: var(--radius-control);
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   color: var(--text-3);
   transition: color 160ms var(--ease-out);
 }
@@ -111,7 +111,7 @@
   font-weight: 500;
 }
 .tab-count {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--text-4);
@@ -149,12 +149,12 @@
 .sidebar-group button {
   position: relative;
   width: 100%;
-  min-height: 30px;
+  min-height: 32px;
   flex-shrink: 0;
-  gap: 10px;
+  gap: 9px;
   padding: 0 10px;
   border-radius: var(--radius-control);
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   color: var(--text);
   transition: background-color 140ms var(--ease-out);
 }
@@ -177,15 +177,17 @@
   gap: 1px;
 }
 .sidebar-group + .sidebar-group {
-  margin-top: 20px;
+  margin-top: 18px;
 }
 /* Section headings: small bold secondary text that folds its section. */
 .sidebar-group h2,
 .sidebar-heading button {
   padding: 0 10px 6px;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale, 1));
   font-weight: 600;
   color: var(--text-3);
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 .sidebar-heading button {
   width: 100%;
@@ -208,7 +210,7 @@
 }
 .sidebar-count {
   margin-left: auto;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   font-variant-numeric: tabular-nums;
   color: var(--text-4);
 }
@@ -221,18 +223,25 @@
 .sidebar kbd {
   display: none;
 }
-.sidebar-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: auto;
-  padding: 18px 0 0 10px;
-}
+.sidebar-footer { display: flex; flex-shrink: 0; align-items: center; gap: 8px; width: var(--sidebar); padding: 8px 12px; }
+.sidebar-footer .sync { min-width: 0; margin-left: auto; padding: 6px 4px; white-space: nowrap; }
+.sidebar-settings { order: -1; width: 32px; height: 32px; flex-shrink: 0; justify-content: center; padding: 0; border-radius: var(--radius-control); }
+.sidebar-settings svg { color: var(--accent); }
+.sidebar-settings:hover, .sidebar-settings[aria-current="page"] { background: var(--selected); }
 .sync {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-4);
 }
 .sync:hover:not(:disabled) {
   color: var(--text-2);
 }
+
+.sidebar-brand { display: flex; align-items: baseline; gap: 8px; padding: 4px 10px 14px; font-size: calc(19px * var(--text-scale, 1)); font-weight: 650; letter-spacing: -.03em; }
+.sidebar-brand span { color: var(--text-3); font-size: calc(10px * var(--text-scale, 1)); font-weight: 500; letter-spacing: .06em; }
+.sidebar-primary > button:first-of-type { background: var(--accent); color: var(--surface); font-weight: 600; margin-bottom: 6px; }
+.sidebar-primary > button:first-of-type > svg { color: inherit; }
+.sidebar-primary > button:first-of-type:hover { filter: brightness(1.08); }
+.sidebar-group button[aria-current="page"], .sidebar-group button[aria-pressed="true"] { color: var(--link); font-weight: 550; }
+.sidebar-footer { border-top: 1px solid var(--line); }
+.sidebar-settings { color: var(--text-2); }
+.sidebar-count { padding: 1px 5px; min-width: 19px; text-align: center; border-radius: 5px; background: var(--hover); }

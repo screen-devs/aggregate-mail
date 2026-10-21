@@ -8,115 +8,32 @@
 .mail-window { position: relative; overflow-anchor: none; }
 .mail-window-row { position: absolute; left: 0; width: 100%; display: flow-root; }
 .mail-window-date { position: absolute; left: 0; width: 100%; pointer-events: none; }
-.mail-window-date .group { top: 0; margin: 0; height: var(--mail-group-height); }
+.mail-window-date .group { top: 0; margin: 0; height: calc(var(--mail-group-height) * var(--text-scale, 1)); }
 .row {
   position: relative;
   width: calc(100% - 12px);
   margin: 1px 6px;
   border-radius: var(--radius-control);
-  height: calc(var(--mail-row-medium) - 2px);
+  height: calc((var(--mail-row-medium) * var(--text-scale, 1)) - 2px);
   display: flex;
   align-items: center;
   padding: 0 12px;
-  font-size: 14px;
+  font-size: calc(14px * var(--text-scale, 1));
   transition: background-color 140ms var(--ease-out);
 }
 .mail-row:hover .row:not(.selected) {
   background: var(--hover);
 }
-/* Row controls inherit Appearance tokens, including unsaved custom palettes. */
-.mail-actions.row-actions {
-  --row-shine: color-mix(in srgb, var(--text) 17%, transparent);
-  --row-well: color-mix(in srgb, var(--bg) 92%, var(--text));
-  --row-cast: color-mix(in srgb, var(--bg) 60%, transparent);
-  --row-face-top: color-mix(in srgb, var(--raised) 82%, var(--text));
-  --row-face-mid: color-mix(in srgb, var(--raised) 96%, var(--text));
-  --row-face-bottom: color-mix(in srgb, var(--raised) 85%, var(--surface));
-  position: absolute;
-  isolation: isolate;
-  z-index: 2;
-  top: 50%;
-  right: 16px;
-  transform: translateY(-50%);
-  gap: 2px;
-  padding: 0 2px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--raised) 88%, var(--text)), var(--raised) 45%, color-mix(in srgb, var(--raised) 80%, var(--bg)));
-  box-shadow: inset 0 1px 0 var(--row-shine), inset 0 -1px 0 var(--line), 0 2px 0 var(--row-well), 0 4px 6px var(--row-cast);
-  opacity: 0;
-  pointer-events: none;
-}
-[data-scheme="light"] .row-actions {
-  --row-shine: color-mix(in srgb, var(--surface) 90%, transparent);
-  --row-well: color-mix(in srgb, var(--surface) 76%, var(--text));
-  --row-cast: color-mix(in srgb, var(--text) 16%, transparent);
-  --row-face-top: var(--raised);
-  --row-face-mid: color-mix(in srgb, var(--raised) 97%, var(--text));
-  --row-face-bottom: color-mix(in srgb, var(--raised) 90%, var(--text));
-  background: linear-gradient(180deg, var(--raised), color-mix(in srgb, var(--raised) 95%, var(--text)) 45%, color-mix(in srgb, var(--surface) 88%, var(--text)));
-}
-.row-actions .tool {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: linear-gradient(180deg, var(--row-face-top), var(--row-face-mid) 46%, var(--row-face-bottom));
-  box-shadow: inset 0 1px 0 var(--row-shine), inset 0 -1px 1px var(--line), 0 1px 0 var(--row-well), 0 2px 3px var(--row-cast);
-  transition: none;
-}
-.row-actions .tool:hover:not(:disabled) { color: var(--text); background: linear-gradient(180deg, var(--row-face-top), var(--row-face-mid) 46%, var(--row-face-bottom)); }
-.row-actions .tool[aria-pressed="true"],
-.row-actions .tool[aria-pressed="true"]:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 50%, var(--raised)), color-mix(in srgb, var(--accent) 30%, var(--raised)) 48%, color-mix(in srgb, var(--accent) 20%, var(--surface)));
-}
-.row-actions .tool:last-of-type,
-.row-actions .tool:last-of-type:hover:not(:disabled) { color: var(--danger); }
-.row-actions .tool:disabled { opacity: 0.36; }
-.row-actions .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; z-index: 1; }
-.row-actions .tool:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 3px var(--row-cast), 0 1px 0 var(--row-shine); }
-.mail-row:hover .row-actions,
-.mail-row:focus-within .row-actions { opacity: 1; pointer-events: auto; }
-.mail-row:hover .row,
-.mail-row:focus-within .row { padding-right: 194px; }
-.mail-row:hover .row time,
-.mail-row:focus-within .row time { opacity: 0; }
-.compact .row-actions .tool { width: 24px; height: 22px; }
-.row-actions > [role="status"] {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-@media (hover: hover) and (pointer: fine) {
-  .row-actions .tool:not(:focus-visible) { transition: transform 100ms var(--ease-out); }
-  .row-actions .tool:hover:not(:disabled):not(:active):not(:focus-visible) { transform: translateY(-1px); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .row-actions .tool { transition: none; }
-}
+.row-actions { position: absolute; top: 50%; right: 16px; transform: translateY(-50%); display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); background: var(--raised); border-radius: var(--radius-control); box-shadow: var(--edge); visibility: hidden; pointer-events: none; }
+.row-actions button { width: 28px; padding: 0; height: 28px; justify-content: center; border-radius: var(--radius-control); }
+.mail-row:hover .row-actions, .mail-row:has(:focus-visible) .row-actions { visibility: visible; pointer-events: auto; }
+.row-actions button:disabled { opacity: 0.4; }
+.mail-row:hover .row time, .mail-row:focus-within .row time { opacity: 0; }
 @media (hover: none) {
   .mail-row { flex-direction: column; align-items: stretch; }
-  .mail-row .mail-actions.row-actions {
-    position: relative;
-    top: auto;
-    right: auto;
-    transform: none;
-    width: max-content;
-    max-width: calc(100% - 36px);
-    margin: 3px 18px 6px;
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .mail-row:hover .row,
-  .mail-row:focus-within .row { padding-right: 12px; }
-  .mail-row:hover .row time,
-  .mail-row:focus-within .row time { opacity: 1; }
+  .row-actions { margin: 2px 6px; position: static; transform: none; visibility: visible; pointer-events: auto; flex-wrap: wrap; flex-shrink: 0; }
+  .row-actions button { min-width: 32px; min-height: 32px; }
+  .mail-row:hover .row time, .mail-row:focus-within .row time { opacity: 1; }
 }
 /* Selection: an accent tint while the list has focus, a gray wash otherwise.
    Text keeps its own colors, so it reads with every accent and mode. */
@@ -184,7 +101,7 @@
   border-radius: 50%;
   background: var(--avatar);
   color: var(--avatar-text);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--text-scale, 1));
   font-weight: 600;
 }
 .avatar .provider-icon {
@@ -194,7 +111,7 @@
   width: 10px;
   height: 10px;
   border-radius: 3px;
-  font-size: 6.5px;
+  font-size: calc(6.5px * var(--text-scale, 1));
   box-shadow: 0 0 0 2px var(--surface);
 }
 .avatar .provider-icon:is(.gmail, .imap) {
@@ -221,7 +138,7 @@
   max-width: 34%;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
   font-weight: 500;
 }
 .row-subject {
@@ -235,7 +152,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
 }
 .row-line .row-preview {
   flex: 1 1 0;
@@ -250,15 +167,15 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
-  color: var(--text-4);
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--reason);
 }
 .row time {
   flex-shrink: 0;
   min-width: 30px;
   margin-left: 10px;
   text-align: right;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
   color: var(--text-4);
   font-variant-numeric: tabular-nums;
 }
@@ -293,19 +210,19 @@
   color: var(--text);
 }
 .row.stacked {
-  height: calc(var(--mail-row-high) - 2px);
+  height: calc((var(--mail-row-high) * var(--text-scale, 1)) - 2px);
 }
 .stacked .row-text {
   gap: 2px;
 }
 .brief {
-  height: calc(var(--mail-row-low) - 2px);
+  height: calc((var(--mail-row-low) * var(--text-scale, 1)) - 2px);
 }
 .compact .row {
-  height: calc(var(--mail-row-compact) - 2px);
+  height: calc((var(--mail-row-compact) * var(--text-scale, 1)) - 2px);
   margin-top: 1px;
   margin-bottom: 1px;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
 }
 .brief .avatar,
 .compact .row .avatar {
@@ -315,7 +232,7 @@
 }
 .brief .avatar-letter,
 .compact .row .avatar-letter {
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale, 1));
 }
 .brief .avatar .provider-icon,
 .compact .row .avatar .provider-icon {
@@ -332,20 +249,20 @@
 /* Beside the reader the list is narrow, so each row is a card: sender and
    time, the subject, then a preview for medium and high relevance. */
 .row.card {
-  height: calc(var(--mail-row-card-low) - 2px);
+  height: calc((var(--mail-row-card-low) * var(--text-scale, 1)) - 2px);
   align-items: flex-start;
   padding: 9px 12px 10px;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale, 1));
 }
-.row.card.r2 { height: calc(var(--mail-row-card-medium) - 2px); }
-.row.card.r3 { height: calc(var(--mail-row-card-high) - 2px); }
+.row.card.r2 { height: calc((var(--mail-row-card-medium) * var(--text-scale, 1)) - 2px); }
+.row.card.r3 { height: calc((var(--mail-row-card-high) * var(--text-scale, 1)) - 2px); }
 .card .avatar {
   width: 28px;
   height: 28px;
   margin: 1px 12px 0 0;
 }
 .card .avatar-letter {
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale, 1));
 }
 .card .row-text {
   gap: 1px;
@@ -369,7 +286,7 @@
   font-weight: 600;
 }
 .compact .row.card {
-  height: calc(var(--mail-row-card-compact) - 2px);
+  height: calc((var(--mail-row-card-compact) * var(--text-scale, 1)) - 2px);
   padding: 6px 12px;
 }
 .compact .row.card .avatar {
@@ -377,16 +294,10 @@
   height: 22px;
   margin: 1px 10px 0 0;
 }
-.mail-row:has(.card) .row-actions {
+.mail-row:has(.card) .row-trash {
   top: 6px;
   right: 12px;
   transform: none;
-}
-.mail-row:hover .row.card,
-.mail-row:focus-within .row.card { padding-right: 12px; }
-@media (hover: hover) {
-  .mail-row:hover .card .row-line,
-  .mail-row:focus-within .card .row-line { padding-right: 176px; }
 }
 .filter-menu {
   position: relative;
@@ -428,7 +339,7 @@
   cursor: default;
 }
 .filter-popover > span {
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale, 1));
   color: var(--text-3);
 }
 .filter-popover .dropdown-trigger {
@@ -442,7 +353,7 @@
   grid-column: 1 / -1;
   justify-self: start;
   margin-top: 4px;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--text-scale, 1));
 }
 .label-filter .dropdown-menu {
   max-height: 260px;
@@ -453,5 +364,10 @@
 }
 
 .row-pin { display: inline-flex; flex-shrink: 0; color: var(--accent); }
-.search-help { margin: 0; padding: 8px 18px; color: var(--text-3); font-size: 12px; }
+.search-help { margin: 0; padding: 8px 18px; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); }
 .search-help[role="alert"] { color: var(--danger); }
+
+.list-pane { container-type: inline-size; }
+.row-actions button:hover:not(:disabled) { background: var(--selected); }
+
+@media (hover: hover) { .list:has(.mail-row:hover) .mail-row:not(:hover) .row-actions { visibility: hidden; pointer-events: none; } }

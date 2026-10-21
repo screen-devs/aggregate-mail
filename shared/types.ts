@@ -32,7 +32,13 @@ export type Account = {
   syncStatus?: "queued" | "running";
 };
 export type Category = "important" | "other";
+export type MailAttachment = { id: string; filename: string; contentType: string; size: number; unavailable?: boolean };
+export type DraftAttachment = { filename: string; contentType: string; content: string };
+export type RuleCondition = { field: "subject" | "body" | "recipient"; contains: string } | { field: "hasAttachment" | "directQuestion" };
 export type DraftContent = {
+  invitation?: import("./invitations").Invitation;
+  cc?: string[];
+  attachments?: DraftAttachment[];
   to: string;
   subject: string;
   body: string;
@@ -42,13 +48,14 @@ export type DraftContent = {
   sendUnknown?: boolean;
 };
 export type Draft = DraftContent & {
+  calendarContext?: { eventId: string; revision: number; sourceMailId?: string; sourceFingerprint?: string };
   id: string;
   accountId: string;
   revision: number;
   updatedAt: number;
   sendUnknown: boolean;
 };
-export type DraftSummary = Pick<Draft, "id" | "accountId" | "revision" | "updatedAt" | "to" | "subject" | "sendUnknown">;
+export type DraftSummary = Pick<Draft, "id" | "accountId" | "revision" | "updatedAt" | "to" | "cc" | "subject" | "sendUnknown"> & { preview?: string; attachmentCount?: number };
 export type DraftSave = DraftContent & { revision: number };
 export type DraftDelete = { revision: number; confirmUnknown?: boolean };
 // Every System One style decision provider speaks the same request and answer
@@ -118,6 +125,11 @@ export function logoDomain(value: string) {
 }
 export type MailImage = { src: string; alt: string };
 export type Mail = {
+  invitation?: { status: "ok"; invitation: import("./invitations").Invitation } | { status: "invalid" | "unsupported"; reason: string };
+  direction?: "received" | "sent";
+  inReplyTo?: string;
+  attachments?: MailAttachment[];
+  mailbox?: { path: string; uidValidity: string; uid: number };
   id: string;
   accountId: string;
   remoteId: string;
@@ -146,15 +158,29 @@ export type Mail = {
   references?: string[];
 };
 export type Rule = {
+  createdAt?: number;
+  excludedMailIds?: string[];
+  accountId?: string;
+  condition?: RuleCondition;
   id: string;
   sender: string;
   instruction: string;
   category: Category;
   relevance: 1 | 2 | 3;
 };
+export type MailChanges = {
+  mailCursor: string;
+  mailMode: "snapshot" | "delta";
+  messages: Mail[];
+  removedMailIds: string[];
+};
+export type StateResponse = Omit<State, "messages"> & MailChanges & { csrf: string };
+
 export type State = {
+  draftCount?: number;
   composePreferences?: ComposePreferences;
   unreadArrivals?: number;
+  mailArrivals?: import("./notifications").MailArrival[];
   accounts: Account[];
   messages: Mail[];
   labels: GmailLabel[];
