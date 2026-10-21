@@ -1,9 +1,12 @@
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act } from "react";
 import { JSDOM } from "jsdom";
 import type { Draft, Mail, State } from "../shared/types";
 import { generatePalette, parseThemeFile, serializeThemeFile, type CustomTheme } from "./themes";
+
+let closeMountedApp: (() => Promise<void>) | undefined;
+afterEach(async () => { await closeMountedApp?.(); });
 
 async function mount(native = false, setup?: (state: State, storage: Storage) => void, bridge: Partial<NonNullable<Window["desktop"]>> | boolean = {}) {
   const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/" });
@@ -118,6 +121,25 @@ async function mount(native = false, setup?: (state: State, storage: Storage) =>
   const { App } = await import("./App");
   const container = dom.window.document.getElementById("root")!;
   const root = createRoot(container);
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    try {
+      await act(async () => root.unmount());
+    } finally {
+      dom.window.close();
+      globalThis.fetch = previousFetch;
+      for (const [key, descriptor] of previous) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+      closeMountedApp = undefined;
+    }
+    assert.equal(subscriptions, 0);
+    assert.equal(changed, undefined);
+  };
+  closeMountedApp = close;
   await act(async () => root.render(<App />));
     await act(async () => { const inbox = [...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find((button) => button.textContent?.trim().startsWith("Inbox")); inbox?.click(); });
   const button = (label: string): HTMLButtonElement => {
@@ -191,17 +213,7 @@ async function mount(native = false, setup?: (state: State, storage: Storage) =>
     holdRead: () => { readWait = new Promise<void>((resolve) => { releaseRead = resolve; }); },
     finishRead: async () => { await act(async () => { releaseRead?.(); await readWait; readWait = undefined; }); },
     savedDraft: () => savedDraft,
-    async close() {
-      await act(async () => root.unmount());
-      assert.equal(subscriptions, 0);
-      assert.equal(changed, undefined);
-      dom.window.close();
-      globalThis.fetch = previousFetch;
-      for (const [key, descriptor] of previous) {
-        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-        else Reflect.deleteProperty(globalThis, key);
-      }
-    },
+    close,
   };
 }
 

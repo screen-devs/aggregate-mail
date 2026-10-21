@@ -114,5 +114,5 @@ test("explicit Google writes use deterministic identity, exact notification payl
     assert.equal(tokens.every((token) => token.startsWith("synthetic-")), true);
     for (const suffix of ["", "-wal"]) assert.equal(readFileSync(path.join(directory, `mail.sqlite${suffix}`)).includes(Buffer.from("PRIVATE-CALENDAR-WRITE")), false);
     assert.doesNotMatch(JSON.stringify(store.all("calendarOperation")), /PRIVATE-PROVIDER-BODY/);
-  } finally { rmSync(directory, { recursive: true, force: true }); }
+  } finally { store.closeStore(); rmSync(directory, { recursive: true, force: true }); }
 });

@@ -69,6 +69,8 @@ npm run dev      # Electron with React/CSS hot reload; restart after desktop or 
 | Documentation only | Relative links, command names, factual claims, `git diff --check` |
 
 - Tests use `tsx --test` over `server/`, `desktop/`, `src/` and `scripts/` test files.
+  `npm test` runs files serially so mounted UI checks do not compete for CPU;
+  individual test and CI step deadlines still apply.
   Run one file with `node --import tsx --test <file>`.
 - There is no `scripts/documentation.py`; do not invent doc commands.
 - Report live sign-in, mailbox changes, sending, interactive UI and

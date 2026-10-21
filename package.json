@@ -8,7 +8,7 @@
     "dev": "node scripts/dev-desktop.mjs",
     "build": "tsc --noEmit && vite build && node scripts/build-desktop.mjs",
     "start": "node scripts/launch-desktop.mjs",
-    "test": "tsx --test --test-timeout=120000 server/*.test.ts desktop/*.test.ts src/*.test.tsx scripts/*.test.mjs",
+    "test": "tsx --test --test-concurrency=1 --test-timeout=120000 server/*.test.ts desktop/*.test.ts src/*.test.tsx scripts/*.test.mjs",
     "dev:web": "concurrently -k \"node --watch-path=server --watch-path=shared --import tsx server/index.ts\" \"vite --host 127.0.0.1\"",
     "start:web": "node --import tsx server/index.ts",
     "package": "npm run build && electron-builder --win nsis --x64 --publish never",
