@@ -126,7 +126,7 @@ function FormattedImage({ src, alt, style }: { src: string; alt: string; style: 
 function legacyAlign(tag: string, align: string): CSSProperties {
   if (tag === "center") return { textAlign: "-webkit-center" as CSSProperties["textAlign"] };
   if (tag === "table") return align === "center" ? { marginLeft: "auto", marginRight: "auto" }
-    : align === "right" ? { marginLeft: "auto" } : {};
+    : align === "left" ? { float: "left" } : align === "right" ? { float: "right" } : {};
   if (tag === "img") return align === "left" || align === "right" ? { float: align }
     : /^(top|middle|bottom|baseline)$/.test(align) ? { verticalAlign: align } : {};
   if (align === "justify") return { textAlign: "justify" };

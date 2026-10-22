@@ -50,7 +50,7 @@ test("inline style grammar keeps sender layout modes and floats but never hides 
   assert.deepEqual(mailStyle("display:inline-block;float:right;clear:both;vertical-align:middle"), {
     display: "inline-block", float: "right", clear: "both", verticalAlign: "middle",
   });
-  for (const value of ["block", "inline", "table", "table-row", "table-cell"])
+  for (const value of ["block", "inline", "inline-table", "table", "table-row", "table-cell"])
     assert.deepEqual(mailStyle(`display:${value}`), { display: value });
   assert.deepEqual(mailStyle("display:none;display:contents;display:flex;float:inline-start;visibility:hidden"), {});
 });

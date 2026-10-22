@@ -324,3 +324,21 @@ test("legacy alignment centers tables, center wraps blocks and quotes take the a
   assert.equal(quote.style.paddingLeft, "");
   assert.equal(quote.style.fontSize, "calc(13px * var(--text-scale, 1))", "sender sizes follow the app text size");
 });
+
+test("social icon rows keep their sender layout: table cells, inline-block wrappers and floated tables", () => {
+  const icon = (name: string) => `<a href="https://example.com/${name}"><img src="https://images.example.com/${name}.png" width="24" height="24" alt="${name}"></a>`;
+  // Five cells inside one row stay beside each other.
+  const cells = ["Facebook", "X", "LinkedIn", "WhatsApp", "Messenger"].map((name) => `<td>${icon(name)}</td>`).join("");
+  const cellRow = documentOf(render(`<table><tbody><tr>${cells}</tr></tbody></table>`));
+  assert.equal(cellRow.querySelectorAll("tr").length, 1);
+  assert.equal(cellRow.querySelector("tr")?.querySelectorAll("td").length, 5);
+  // Inline-block wrappers place consecutive icons on the same line.
+  const wrapped = documentOf(render(`<p>${["a", "b"].map((name) => `<div style="display:inline-block">${icon(name)}</div>`).join("")}</p>`));
+  assert.deepEqual([...wrapped.querySelectorAll<HTMLElement>(".formatted-mail div")].map((node) => node.style.display), ["inline-block", "inline-block"]);
+  // Newsletter footers float a small table per icon with align="left". Without
+  // the float each table is block-level and every icon lands on its own line.
+  const floated = documentOf(render(`${["a", "b", "c", "d", "e"].map((name) => `<table align="left"><tr><td>${icon(name)}</td></tr></table>`).join("")}`));
+  const tables = floated.querySelectorAll<HTMLElement>(".formatted-mail > table");
+  assert.equal(tables.length, 5);
+  assert.deepEqual([...tables].map((node) => node.style.float), ["left", "left", "left", "left", "left"]);
+});

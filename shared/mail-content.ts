@@ -85,7 +85,7 @@ export function mailStyle(value: string): Record<string, string | number> {
     if (name === "border-collapse" && /^(collapse|separate)$/.test(input)) output = input;
     // Layout modes that newsletters use for columns and icon rows. Values that
     // hide content (none, visibility) stay rejected so all sender text is visible.
-    if (name === "display" && /^(block|inline|inline-block|table|table-row|table-cell)$/.test(input)) output = input;
+    if (name === "display" && /^(block|inline|inline-block|inline-table|table|table-row|table-cell)$/.test(input)) output = input;
     if (name === "float" && /^(left|right|none)$/.test(input)) output = input;
     if (name === "clear" && /^(left|right|both|none)$/.test(input)) output = input;
     if (name === "line-height") {

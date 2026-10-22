@@ -4,6 +4,11 @@
 
 - Allow the CI test step 12 minutes. The serial suite reached the 8-minute limit on hosted Intel macOS runners.
 - Move the Filters, privacy and Sender details buttons into the persistent toolbar, and put Inbox tabs, the cached-mail note and work-view controls on the same line as each pane title.
+- Give every pane header below the toolbar one 48px height and extend Transparency (Glass/Subtle) to the whole window with one shared tint over the toolbar and every working pane, transparent child panes, blurred sticky headings and brighter secondary text for built-in and custom themes.
+- Show Inbox tabs in the header as 32px segments with a bordered active pill, group Settings controls into rounded cards with labeled rows and rotating expanding groups, put the assistants Refresh beside "Your assistants", and run the section divider the full pane height.
+- Stop MCP endpoint and token copies from locking mail actions or reloading state, removing the sidebar flicker while keeping the copied notice and clipboard fallback.
+- Bundle Inter Variable so Windows and Linux get the same interface typeface instead of falling back to Segoe UI.
+- Keep social icon rows and other `align="left"`/floated newsletter tables horizontal in formatted mail, and accept `display: inline-table`; hiding values stay rejected.
 
 - Upgrade and pin CI actions, lint workflows before packaging, and group weekly Actions dependency updates. Reject incomplete release asset sets and artifact digest mismatches, serialize manual releases per ref, and support `[skip release]` in the final main commit message while ordinary CI still runs.
 
