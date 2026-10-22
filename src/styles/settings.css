@@ -29,7 +29,7 @@
   padding: 16px 20px;
 }
 .settings-column {
-  max-width: 600px;
+  max-width: 720px;
   min-width: 0;
   padding: 0 0 24px;
 }
@@ -45,7 +45,7 @@
   align-items: baseline;
   gap: 10px;
   margin-bottom: 6px;
-  font-size: calc(16px * var(--text-scale, 1));
+  font-size: calc(17px * var(--text-scale, 1));
   font-weight: 600;
   line-height: 22px;
 }
@@ -54,11 +54,12 @@
   font-weight: 400;
   color: var(--text-4);
 }
+/* Group labels sit just above their card, in quiet secondary text. */
 .settings h2 {
-  margin: 16px 0 6px;
-  font-size: calc(13px * var(--text-scale, 1));
+  margin: 20px 0 8px;
+  font-size: calc(12px * var(--text-scale, 1));
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-2);
 }
 .settings h1 + h2,
 .settings h1 + .settings-group,
@@ -111,12 +112,11 @@
 }
 .account-row {
   min-height: 44px;
-  padding: 6px 0;
+  padding: 12px 0;
   flex-wrap: wrap;
   display: flex;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid var(--line);
 }
 .account-row .provider-icon {
   width: 18px;
@@ -209,8 +209,7 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
 }
 .note + .rule-row {
   margin-top: 10px;
@@ -295,7 +294,6 @@
   align-items: flex-start;
   gap: 14px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--line);
 }
 .mcp-copy > div {
   flex: 1;
@@ -377,7 +375,7 @@
   transform: scale(0.9);
 }
 
-.account-name-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.account-name-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 0; }
 .account-name-form input { flex: 1; min-width: 120px; }
 .account-name-form [role="alert"] { flex-basis: 100%; color: var(--danger); }
 .theme-choice-name {
@@ -450,20 +448,42 @@
 
 .settings-pane { container-type: inline-size; min-height: 0; }
 .settings:not(:has(.settings-navigation)) { grid-template-columns: minmax(0, 1fr); }
-.settings-navigation { position: sticky; top: 0; align-self: start; display: grid; gap: 3px; padding-right: 16px; border-right: 1px solid var(--line); }
+/* One row that fills the pane, so the navigation's divider runs its full height. */
+.settings { grid-template-rows: 1fr; }
+.settings-navigation { position: sticky; top: 0; align-self: stretch; display: grid; gap: 3px; align-content: start; padding-right: 16px; border-right: 1px solid var(--line); }
 .settings-navigation button { min-width: 0; gap: 9px; min-height: 38px; padding: 8px 10px; border-radius: var(--radius-control); text-align: left; white-space: normal; justify-content: flex-start; color: var(--text-2); font-size: calc(12px * var(--text-scale, 1)); }
 .settings-navigation button svg { flex-shrink: 0; }
 .settings-navigation [aria-current="page"] { background: var(--selected); color: var(--link); font-weight: 600; }
 .settings-navigation button:hover { background: var(--hover); }
-.settings-section-heading { padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
-.settings-section-heading p { max-width: 55ch; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); line-height: 1.6; }
+.settings-section-heading { margin-bottom: 24px; }
+.settings-section-heading p { max-width: 55ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); line-height: 1.6; }
 .settings-agent-link { width: 100%; justify-content: space-between; padding: 16px; margin-bottom: 24px; height: auto; border-color: var(--line-2); background: var(--hover); white-space: normal; }
 .settings-agent-link strong { display: block; color: var(--link); font-size: calc(13px * var(--text-scale, 1)); }
 .settings-agent-link small { display: block; margin-top: 4px; color: var(--text-2); font-size: calc(12px * var(--text-scale, 1)); font-weight: 400; }
-.settings .settings-group { background: transparent; border: 0; border-radius: 0; overflow: visible; }
-.settings .settings-group > * { margin-left: 0; margin-right: 0; }
-.settings .settings-row { padding: 6px 0; }
-.settings .settings-row.stacked { padding: 8px 0; gap: 6px; }
+/* Groups are soft cards holding rows, with hairlines inset from both edges. */
+.settings .settings-group { background: color-mix(in srgb, var(--text) 3%, transparent); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.settings .settings-group > * { margin-left: 16px; margin-right: 16px; }
+.settings .settings-group + .settings-group { margin-top: 20px; }
+.settings .settings-row { padding: 12px 0; }
+.settings .settings-row.stacked { padding: 12px 0; gap: 6px; }
+/* An expandable row is itself the card: the summary is the row and opens the
+   body beneath it, with a chevron that rotates. */
+.settings details.settings-group > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; cursor: pointer; list-style: none; font-weight: 500; color: var(--text); }
+.settings details.settings-group > summary::marker, .settings details.settings-group > summary::-webkit-details-marker { display: none; content: ""; }
+.settings details.settings-group > summary::after { content: ""; width: 8px; height: 8px; flex-shrink: 0; border-right: 1.5px solid var(--text-3); border-bottom: 1.5px solid var(--text-3); transform: rotate(45deg); transition: transform 200ms var(--ease-out); }
+.settings details.settings-group[open] > summary::after { transform: rotate(-135deg); }
+.settings details.settings-group:not([open]) > summary { border-bottom: 0; }
+.settings details.settings-group > :not(summary):last-child { padding-bottom: 12px; }
+/* Inside an expandable card, nested groups fold into the card's own rows. */
+.settings .settings-details { margin-top: 20px; }
+.settings .settings-details .settings-group { background: transparent; border: 0; border-radius: 0; overflow: visible; }
+.settings .settings-details .settings-group > * { margin-left: 0; margin-right: 0; }
+/* A label row with its action at the right edge (assistants list). */
+.settings-group-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+.settings-group-label h2 { margin: 0; font-size: calc(12px * var(--text-scale, 1)); font-weight: 600; color: var(--text-2); }
+.settings-group-label .work-toolbar { flex-shrink: 0; padding: 0; }
+.settings-group-label .work-controls button { height: 26px; padding: 0 10px; }
+.settings-group-label + .work-content { padding-top: 0; }
 .settings .segmented { display: flex; flex-wrap: wrap; gap: 4px; padding: 0; border: 0; width: fit-content; max-width: 100%; }
 .settings .segmented button { min-width: 0; flex: 0 1 auto; height: auto; min-height: 30px; padding: 5px 10px; border: 1px solid var(--line-2); white-space: normal; overflow-wrap: anywhere; }
 .settings .segmented button.active { border-color: var(--accent); color: var(--link); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); box-shadow: inset 0 0 0 .5px var(--accent); }
@@ -484,12 +504,12 @@
 .compose-settings-account { min-width: 0; overflow-wrap: anywhere; font-weight: 500; text-align: right; }
 .settings .compose-settings-save { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .settings-facts { margin: 0; }
-.settings-facts > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; gap: 12px; min-height: 40px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.settings-facts > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; gap: 12px; min-height: 44px; padding: 12px 0; }
 .settings-facts dt { font-weight: 500; }
 .settings-facts dd { margin: 0; color: var(--text-3); line-height: 1.5; overflow-wrap: anywhere; }
 .settings-logos .note { margin: 0 0 10px; }
 @container (max-width: 680px) {
-  .settings { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 16px; }
+  .settings { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; padding: 16px; gap: 16px; }
   .settings-navigation { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 0 16px; border-right: 0; border-bottom: 1px solid var(--line); }
   .settings-column { padding: 0 0 32px; }
 }

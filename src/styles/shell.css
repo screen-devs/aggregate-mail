@@ -376,13 +376,20 @@
 .app { font-size: calc(13px * var(--text-scale, 1)); }
 .app-toolbar .mail-navigation { flex: 0 0 auto; padding: 0; border: 0; gap: 2px; }
 .app-toolbar .mail-navigation button { width: 28px; height: 30px; padding: 0; justify-content: center; }
-.main-head { height: 40px; min-height: 40px; }
+/* Every pane header under the top bar shares one height so its bottom
+   hairline runs continuously across list, reader and sender panes. */
+.main-head, .reader-head, .context-head { height: var(--subhead-height); min-height: var(--subhead-height); }
 /* Secondary controls share the title line: category tabs, cached-mail notes
    and each work view's controls. */
-.main-head .inbox-tabs { flex: 1; min-width: 0; height: auto; padding: 0; border-bottom: 0; margin-left: 12px; }
-.head-tools { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin-left: 12px; }
-.head-note { flex: 1; min-width: 0; margin-left: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); }
-.head-note button { font-size: inherit; }
+.main-head .inbox-tabs { flex: 1; min-width: 0; height: auto; padding: 0; border-bottom: 0; margin-left: 12px; gap: 4px; }
+.main-head .inbox-tabs button { height: 32px; padding: 0 12px; }
+/* The wash spans the nav height so the active pill keeps a full 32px outline. */
+.main-head .inbox-tabs :is(.sliding-hover, .sliding-wash) { top: 0; bottom: 0; }
+.main-head .inbox-tabs .sliding-wash { border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.head-tools { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin-left: 12px; overflow: hidden; }
+.head-note { flex: 1; min-width: 0; margin-left: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); }
+.head-note button { flex-shrink: 0; height: 26px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--radius-control); color: var(--text); font-size: inherit; }
+.head-note small { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex-shrink: 10; }
 .drafts-pane { display: flex; flex: 1; flex-direction: column; min-height: 0; background: var(--surface); }
 .draft-list { overflow: auto; min-height: 0; }
 .draft-list-heading { display: flex; align-items: center; justify-content: space-between; padding: 8px 20px; color: var(--text-3); border-bottom: 1px solid var(--line); }

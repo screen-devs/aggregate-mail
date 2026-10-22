@@ -106,6 +106,23 @@ test("custom and preview colors follow the resolved scheme and clear fully when 
   });
 });
 
+test("glass brightens faint text for custom palettes and clears with it", async () => {
+  await withDesktop("win32", async (_calls, dom) => {
+    const { applyAppearance, defaultAppearance } = await import("./appearance");
+    const theme: CustomTheme = { id: `custom:${crypto.randomUUID()}`, name: "Nightfall", palettes: {
+      dark: generatePalette("#1a1b26", "#7aa2f7", "dark"), light: generatePalette("#eef0f8", "#3456bc", "light"),
+    } };
+    const root = dom.window.document.documentElement;
+    const value = { ...defaultAppearance, theme: theme.id, customThemes: [theme], transparency: "glass" as const };
+    applyAppearance(value, "dark");
+    assert.equal(root.style.getPropertyValue("--text-3"), `color-mix(in srgb, ${theme.palettes.dark.secondaryText} 75%, ${theme.palettes.dark.mutedText})`);
+    applyAppearance({ ...value, transparency: "off" }, "dark");
+    assert.equal(root.style.getPropertyValue("--text-3"), theme.palettes.dark.mutedText);
+    applyAppearance(value, "dark");
+    assert.equal(root.style.getPropertyValue("--text-3"), `color-mix(in srgb, ${theme.palettes.dark.secondaryText} 75%, ${theme.palettes.dark.mutedText})`);
+  });
+});
+
 test("an unavailable storage write leaves the saved theme library and selection intact", async () => {
   await withDesktop("linux", async (_calls, dom) => {
     const { defaultAppearance, readAppearance, saveAppearance } = await import("./appearance");

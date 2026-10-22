@@ -15,6 +15,7 @@
   --mail-row-card-high: 80px;
   --mail-row-card-compact: 54px;
   --mail-group-height: 30px;
+  --subhead-height: 48px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   /* A lightly damped spring: settles with a small overshoot, never loops. */
@@ -129,7 +130,15 @@
 }
 
 /* Transparency: the OS material shows through the window frame, sidebar and
-   working panes, tinted by the theme. */
+   one shared pane tint laid over every working pane, so no pane stacks two
+   tints and every pane reads at the same depth. Faint text brightens one
+   step so previews, counts and meta stay readable over bright materials. */
+:root[data-glass] {
+  --pane-glass: color-mix(in srgb, var(--surface) 50%, transparent);
+  /* A text-2/text-4 mix tracks each theme's ramp without a self-reference;
+     applyAppearance writes the same mix inline for custom palettes. */
+  --text-3: color-mix(in srgb, var(--text-2) 75%, var(--text-4));
+}
 :root[data-glass],
 :root[data-glass] body {
   background: transparent;
@@ -140,21 +149,27 @@
 :root[data-glass] .sidebar {
   background: color-mix(in srgb, var(--bg) 20%, transparent);
 }
-:root[data-glass] .list-pane,
-:root[data-glass] .reader-pane,
-:root[data-glass] .settings-pane,
-:root[data-glass] .context {
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
+/* One tint layer covers the top bar and every working pane; each pane stays
+   transparent so nothing stacks a second tint. */
+:root[data-glass] .app-main {
+  background: var(--pane-glass);
+}
+:root[data-glass] :is(.app-toolbar, .list-pane, .reader-pane, .settings-pane,
+  .context, .work-pane, .drafts-pane, .workspace) {
+  background: transparent;
+}
+/* Sticky surfaces get a stronger tint plus a blur so scrolled text does not
+   show through illegibly. */
+:root[data-glass] :is(.group, .agent-navigation, .today-mail > .mail-actions) {
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  backdrop-filter: blur(12px);
+}
+:root[data-glass][data-scheme="light"] {
+  --pane-glass: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 :root[data-glass][data-scheme="light"] .app {
   background: color-mix(in srgb, var(--bg) 40%, transparent);
 }
 :root[data-glass][data-scheme="light"] .sidebar {
   background: color-mix(in srgb, var(--bg) 30%, transparent);
-}
-:root[data-glass][data-scheme="light"] .list-pane,
-:root[data-glass][data-scheme="light"] .reader-pane,
-:root[data-glass][data-scheme="light"] .settings-pane,
-:root[data-glass][data-scheme="light"] .context {
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
 }

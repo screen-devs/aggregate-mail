@@ -139,6 +139,10 @@ export function applyAppearance(value: Appearance, scheme: Scheme = resolveSchem
   const palette = preview?.palette ?? value.customThemes.find((theme) => theme.id === value.theme)?.palettes[activeScheme];
   if (palette) applyPalette(palette, root);
   const glass = supportsGlass() && value.transparency !== "off";
+  // Palettes set --text-3 inline, which beats the stylesheet's glass step-up;
+  // write the same text-2/text-4 mix explicitly so faint text brightens under
+  // glass for every theme. clearPalette resets it on the next apply.
+  if (glass && palette) root.style.setProperty("--text-3", `color-mix(in srgb, ${palette.secondaryText} 75%, ${palette.mutedText})`);
   root.toggleAttribute("data-glass", glass);
   // The native theme decides the material's tint, native menus and what System reports.
   window.desktop?.setScheme?.(preview?.scheme ?? value.mode);

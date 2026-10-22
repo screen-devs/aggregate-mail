@@ -171,6 +171,7 @@ export function AppearanceSettings({ value, scheme, onChange, onPreview = noPrev
         </div>
       </div>
       <p className="note">
+        {glass ? "Transparency applies to the whole window. " : ""}
         {!glass ? "Transparency needs macOS or Windows 11. "
           : value.transparency === "glass" ? "Glass blurs what is behind the window. It can lag while the window moves. "
           : value.transparency === "subtle" ? "Subtle tints the window from your wallpaper and stays smooth. " : ""}

@@ -1116,7 +1116,7 @@ export function App() {
               section={settingsSection}
               onSection={setSettingsSection}
               assistants={<Workbench mode="assistants" state={state} api={api} work={work} accountFilter={accountFilter}
-                onOpen={jumpTo} onMailChanged={reload} onNotice={setNotice} onModalChange={setWorkModal} renderHead={(tools) => <div className="work-head-inline">{tools}</div>} />}
+                onOpen={jumpTo} onMailChanged={reload} onNotice={setNotice} onModalChange={setWorkModal} renderHead={(tools) => <div className="settings-group-label"><h2>Your assistants</h2>{tools}</div>} />}
               appearance={appearance}
               scheme={themePreview?.scheme ?? scheme}
               onAppearance={(value) => {

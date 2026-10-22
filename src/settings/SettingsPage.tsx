@@ -227,7 +227,7 @@ export function SettingsPage({
             AI sorting sends sender, subject and preview text to its provider. OpenAI also receives cached message content and metadata.
             Without a key, sorting stays local.
           </p>
-          <details>
+          <details className="settings-group settings-details">
             <summary>Google setup and sorting keys</summary>
             {!state.googleConfigured && (
               <div className="setup">
