@@ -24,9 +24,10 @@
     -apple-system,
     BlinkMacSystemFont,
     "SF Pro Text",
+    "Inter Variable",
+    Inter,
     "Segoe UI Variable Text",
     "Segoe UI",
-    Inter,
     system-ui,
     sans-serif;
   font-size: calc(13px * var(--text-scale, 1));

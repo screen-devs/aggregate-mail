@@ -20,6 +20,7 @@
     "cli": "node scripts/emc2.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "5.3.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "electron-updater": "6.8.10",
     "express": "^5.1.0",
@@ -57,7 +58,7 @@
   "author": "Screen",
   "build": {
     "appId": "dev.screen.aggregate-mail",
-    "productName": "Emc\u00b2",
+    "productName": "Emc²",
     "directories": {
       "output": "release"
     },
