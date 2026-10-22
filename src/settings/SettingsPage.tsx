@@ -32,6 +32,8 @@ export function SettingsPage({
   api,
   onConnectAccount,
   onNotice,
+  onCopied = onNotice,
+  onError = onNotice,
   windowSide,
   onWindowSide,
   onWindowControls,
@@ -62,6 +64,8 @@ export function SettingsPage({
   api: Api;
   onConnectAccount: (provider: ImapProvider) => void;
   onNotice: (text: string) => void;
+  onCopied?: (text: string) => void;
+  onError?: (text: string) => void;
   windowSide: "left" | "right";
   onWindowSide: (side: "left" | "right") => void;
   onWindowControls?: (controls: "mac" | "windows") => void;
@@ -329,9 +333,9 @@ export function SettingsPage({
           busy={busy}
           onNotice={onNotice}
         />}
-        {section === "mcp" && <>{assistants}<details className="settings-agent-advanced"><summary>Connection controls</summary><McpSection api={api} perform={perform} busy={busy} /></details></>}
+        {section === "mcp" && <>{assistants}<details className="settings-group settings-details settings-agent-advanced"><summary>Connection controls</summary><McpSection api={api} perform={perform} busy={busy} onCopied={onCopied} onError={onError} /></details></>}
         {section === "about" && <section>
-          <dl className="settings-facts">
+          <dl className="settings-facts settings-group">
             <div><dt>Storage</dt><dd>{aboutStorageSentence(window.desktop?.credentialFallback)}.</dd></div>
             <div><dt>Sync</dt><dd>IMAP watches for changes. Gmail checks every 15 seconds, with periodic full sync for recovery.</dd></div>
             <div><dt>Closing</dt><dd>Closing the desktop window keeps it running in the tray. Use Quit in the tray menu to exit.</dd></div>

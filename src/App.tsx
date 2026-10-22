@@ -1082,6 +1082,8 @@ export function App() {
               api={api}
               onConnectAccount={setConnecting}
               onNotice={(text) => pushToast(text, "info")}
+              onCopied={(text) => pushToast(text, "success")}
+              onError={setNotice}
               composeDraft={composeDraft}
               composeSaving={composeSaving}
               onComposeDraft={setComposeDraft}

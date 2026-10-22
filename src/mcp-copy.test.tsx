@@ -25,7 +25,9 @@ test("MCP endpoint Copy uses the desktop bridge when browser clipboard permissio
       perform={async (task, message) => {
         try { await task(); if (message) notices.push(message); }
         catch (error) { errors.push((error as Error).message); }
-      }} />));
+      }}
+      onCopied={(text) => notices.push(text)}
+      onError={(text) => errors.push(text)} />));
     const copy = [...container.querySelectorAll("button")].find((button) => button.textContent === "Copy")!;
     assert.ok(copy);
     await act(async () => copy.click());

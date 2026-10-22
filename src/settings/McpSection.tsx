@@ -7,10 +7,14 @@ export function McpSection({
   api,
   perform,
   busy,
+  onCopied,
+  onError,
 }: {
   api: Api;
   perform: Perform;
   busy: boolean;
+  onCopied: (text: string) => void;
+  onError: (text: string) => void;
 }) {
   const [settings, setSettings] = useState<McpSettings | null>(null);
   const [open, setOpen] = useState(false);
@@ -87,14 +91,13 @@ export function McpSection({
                   <button
                     className="button"
                     disabled={busy}
-                    onClick={() =>
-                      void perform(
-                        () => window.desktop?.copyMcpEndpoint
-                          ? window.desktop.copyMcpEndpoint()
-                          : navigator.clipboard.writeText(value),
-                        `${label} copied.`,
-                      )
-                    }
+                    onClick={() => void (async () => {
+                      try {
+                        if (window.desktop?.copyMcpEndpoint) await window.desktop.copyMcpEndpoint();
+                        else await navigator.clipboard.writeText(value);
+                        onCopied(`${label} copied.`);
+                      } catch (error) { onError(error instanceof Error ? error.message : "Action failed."); }
+                    })()}
                   >
                     Copy
                   </button>

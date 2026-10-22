@@ -1729,6 +1729,28 @@ test('pane tools live in the persistent toolbar and section controls share the t
   } finally { await ui.close(); }
 });
 
+test('copying the MCP endpoint toasts without locking or remounting the sidebar', async () => {
+  let releaseCopy!: () => void;
+  const held = new Promise<void>((resolve) => { releaseCopy = resolve; });
+  const ui = await mount(false, undefined, { copyMcpEndpoint: () => held });
+  try {
+    await ui.click(ui.button('Settings'));
+    await ui.click(ui.button('AI and agents'));
+    const sidebar = ui.container.querySelector(".sidebar")!;
+    const nav = sidebar.querySelector<HTMLElement>(".sidebar-group")!;
+    const drafts = ui.button('Drafts');
+    await ui.click(ui.button('Show options'));
+    await ui.click(ui.button('Copy'));
+    assert.equal(drafts.disabled, false, "a clipboard write never locks the mail actions");
+    assert.equal(ui.container.querySelector(".sidebar"), sidebar, "sidebar stays mounted");
+    assert.equal(sidebar.querySelector(".sidebar-group"), nav, "sidebar nav keeps its nodes");
+    await act(async () => releaseCopy());
+    const copied = [...ui.container.querySelectorAll(".toast")].filter((toast) => toast.textContent?.includes("Endpoint copied."));
+    assert.equal(copied.length, 1, "one copied toast");
+    assert.equal(drafts.disabled, false);
+  } finally { await ui.close(); }
+});
+
 test('assistant management stays in Settings and Agent review only shows review work', async () => {
   const ui = await mount();
   try {
