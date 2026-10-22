@@ -8,8 +8,8 @@ import { eventWhen } from "./EventPanel";
 
 type Operation = { state: "unknown" | "complete"; kind?: string; requestId?: string; response?: CalendarResponse; result?: CalendarEvent; sourceMailId?: string; sourceFingerprint?: string };
 const answers = [["Accept", "ACCEPTED", "accepted"], ["Maybe", "TENTATIVE", "tentative"], ["Decline", "DECLINED", "declined"]] as const;
-export function CalendarActions({ event, api, google, invitation, onOpenDraft, onChanged, onReviewResult }: {
-  event: CalendarEvent; api: Api; google: boolean; invitation?: { mailId: string; fingerprint: string }; onOpenDraft?: (draft: Draft) => void; onChanged?: () => unknown; onReviewResult?: (event: CalendarEvent) => void;
+export function CalendarActions({ event, api, google, accountAvailable = false, invitation, onOpenDraft, onChanged, onReviewResult }: {
+  event: CalendarEvent; api: Api; google: boolean; accountAvailable?: boolean; invitation?: { mailId: string; fingerprint: string }; onOpenDraft?: (draft: Draft) => void; onChanged?: () => unknown; onReviewResult?: (event: CalendarEvent) => void;
 }) {
   const lock = useRef(false);
   const [pending, setPending] = useState(false), [notice, setNotice] = useState("");
@@ -47,9 +47,9 @@ export function CalendarActions({ event, api, google, invitation, onOpenDraft, o
     {event.cancelled && <p role="status">Cancelled event</p>}
     {notice && <p role="status">{notice}</p>}
     {!event.cancelled && event.source === "local" && <>
-      {!event.accountId && <p>Choose a connected account in Edit event before preparing an invitation.</p>}
-      <div className="form-actions"><button type="button" disabled={pending || !event.accountId || !onOpenDraft} onClick={() => void prepare("REQUEST")}>Prepare invitation draft</button>
-      <button type="button" disabled={pending || !event.accountId || !onOpenDraft} onClick={() => void prepare("CANCEL")}>Prepare cancellation draft</button></div>
+      {!accountAvailable && <p>Choose a connected account in Edit event before preparing an invitation.</p>}
+      <div className="form-actions"><button type="button" disabled={pending || !accountAvailable || !onOpenDraft} onClick={() => void prepare("REQUEST")}>Prepare invitation draft</button>
+      <button type="button" disabled={pending || !accountAvailable || !onOpenDraft} onClick={() => void prepare("CANCEL")}>Prepare cancellation draft</button></div>
     </>}
     {operation?.kind === "google-insert" && operation.state === "complete" && operation.result && onReviewResult && <button type="button" onClick={() => onReviewResult(operation.result!)}>Review created Google event</button>}
     {operation?.state === "unknown" ? <><p role="alert">A Google action has an unknown outcome. No automatic retry is allowed.</p><button type="button" disabled={pending || !!invitation && (operation.sourceMailId !== invitation.mailId || operation.sourceFingerprint !== invitation.fingerprint)} onClick={() => void googleWrite()}>Check submitted Google action</button></>

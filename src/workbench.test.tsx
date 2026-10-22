@@ -176,7 +176,7 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
   const state:State={accounts:[{id:"a",email:"reader@example.com",provider:"imap",name:"Private Reader"},{id:"b",email:"second@example.com",provider:"gmail"}],messages:[mail("in-a","a"),mail("sent-a","a","sent"),mail("in-b","b")],labels:[],rules:[],googleConfigured:false,googleClientId:null,jevConfigured:false,jevProvider:"typesafe",aiConfigured:false,lastSync:null,syncing:false};
   const workspace:Workspace={commitments:[],projects:[],decisions:[],coverage:[],proposals:[]};
   const grants:AgentGrant[]=[];
-  const events:CalendarEvent[]=[];let eventFailure=false;
+  const events:CalendarEvent[]=[];let eventFailure=false, lostEventDelete=false;
   let eventSave: Promise<void> | undefined; let releaseEventSave = () => {};
   const google:GoogleCalendarStatus[]=[];let syncEvents:CalendarEvent[]|undefined;
   const requests:{url:string;method:string;body:any}[]=[];const opened:string[]=[];
@@ -223,7 +223,7 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
     else if(url.startsWith("/calendar/google/")&&method==="PATCH"){const value=google.find(value=>value.accountId===decodeURIComponent(url.split("/")[3]))!;value.selectedIds=(body as any).selectedIds;value.stale=true;value.syncedAt=0;result={ok:true};}
     else if(url==="/calendar/events"&&method==="POST"){await eventSave;if(eventFailure)throw new Error("Synthetic event failure");const input=body as any;const saved=events.find(event=>event.id===input.id);if(saved)result=saved;else{const event:CalendarEvent={...input,attendees:input.attendees.map((email:string)=>({email})),source:"local",revision:1,updatedAt:1};events.push(event);result=event;}}
     else if(url.startsWith("/calendar/events/")&&method==="PATCH"){const id=decodeURIComponent(url.slice("/calendar/events/".length));const index=events.findIndex(event=>event.id===id);const{revision,...input}=body as any;assert.equal(revision,events[index].revision);events[index]={...input,attendees:input.attendees.map((email:string)=>({email})),id,source:"local",revision:revision+1,updatedAt:2};result=events[index];}
-    else if(url.startsWith("/calendar/events/")&&method==="DELETE"){await eventSave;if(eventFailure)throw new Error("Synthetic event failure");const id=decodeURIComponent(url.slice("/calendar/events/".length));const index=events.findIndex(event=>event.id===id);assert.equal((body as any).revision,events[index].revision);events.splice(index,1);result={ok:true};}
+    else if(url.startsWith("/calendar/events/")&&method==="DELETE"){await eventSave;if(eventFailure)throw new Error("Synthetic event failure");const id=decodeURIComponent(url.slice("/calendar/events/".length));const index=events.findIndex(event=>event.id===id);assert.equal((body as any).revision,events[index].revision);events.splice(index,1);if(lostEventDelete)throw new Error("Synthetic response loss");result={ok:true};}
     else if(url==="/state")result={...state,csrf:"synthetic"};else if(url==="/sync")result={errors:[]};
     else throw new Error(`Unexpected synthetic request ${method} ${url}`);
     return result as T;
@@ -243,7 +243,7 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
   const fill=async(text:string,value:string)=>{const input=field(text);await act(async()=>{Object.getOwnPropertyDescriptor(input.tagName==="TEXTAREA"?dom.window.HTMLTextAreaElement.prototype:input.tagName==="SELECT"?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new dom.window.Event(input.tagName==="SELECT"?"change":"input",{bubbles:true}));});};
   const submit=async()=>act(async()=>(container.querySelector(".dialog form") || container.querySelector("form"))!.dispatchEvent(new dom.window.Event("submit",{bubbles:true,cancelable:true})));
   return{container,state,workspace,grants,events,google,syncEvents:(value:CalendarEvent[])=>{syncEvents=value;},failEvents:(value:boolean)=>{eventFailure=value;},notices,requests,opened,confirmations,confirm:(value:boolean)=>{confirmed=value;},
-    get work(){return currentWork!;},heldReads,
+    get work(){return currentWork!;},heldReads,loseEventDelete:()=>{lostEventDelete=true;},
     holdEventSave:()=>{eventSave=new Promise<void>(resolve=>{releaseEventSave=resolve;});return ()=>releaseEventSave();},
     holdWorkspace:()=>{holdReads=true;},
     configureProvider:()=>{configuredProvider=true;},
@@ -1131,5 +1131,24 @@ test("event deletion uses a guarded dialog, retains failure and revision, and re
   assert.equal(ui.container.querySelector('[aria-label="Event details"]'),null);
   assert.deepEqual(ui.requests.filter(request=>request.method==="DELETE").map(request=>request.body),[{revision:1},{revision:1}]);
   assert.equal(ui.confirmations.length,0,"no native confirm prompt");
+ }finally{await ui.close();}
+});
+
+
+for (const exit of ["Cancel", "Escape"]) test(`event deletion response loss restores Calendar focus on ${exit}`, async () => {
+ const ui=await mount("actions",true);try{
+  await ui.click(sidebarButton(ui,"Calendar"));await ui.click(ui.button("New event"));await ui.fill("Title","Response loss event");await saveEventForm(ui);
+  await ui.click(ui.button("Back to calendar"));await ui.click(ui.button("Agenda"));
+  const origin=ui.container.querySelector<HTMLButtonElement>(".calendar-agenda .calendar-event")!;assert.ok(origin);
+  await act(async()=>origin.focus());await ui.click(origin);
+  await act(async()=>ui.button("Delete event").focus());await ui.click(ui.button("Delete event"));ui.loseEventDelete();
+  const dialog=()=>ui.container.querySelector<HTMLElement>('[role="dialog"][aria-label="Delete event"]');
+  await ui.click(dialog()!.querySelector<HTMLButtonElement>(".trash-action")!);
+  assert.equal(ui.events.length,0,"DELETE applied before its response failed");assert.equal(origin.isConnected,false);
+  assert.ok(dialog()?.querySelector('[role="alert"]'));assert.equal(ui.container.querySelector('[aria-label="Event details"]'),null);
+  if(exit==="Cancel")await ui.click(ui.button("Cancel"));
+  else await act(async()=>window.dispatchEvent(new ui.dom.window.KeyboardEvent("keydown",{key:"Escape",bubbles:true})));
+  assert.equal(dialog(),null);assert.ok(document.activeElement===ui.button("Previous month"),"detached trigger falls back to a stable Calendar control");
+  assert.equal(ui.requests.filter(request=>request.method==="DELETE").length,1,"cancellation never retries a possibly applied delete");
  }finally{await ui.close();}
 });

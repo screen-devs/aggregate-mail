@@ -199,6 +199,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
   const [eventDelete, setEventDelete] = useState<CalendarEvent | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const calendarOrigin = useRef<HTMLElement | null>(null);
+  const calendarMain = useRef<HTMLDivElement>(null);
   const eventPanel = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState(initialDraft);
   const missingSelection = useRef(false);
@@ -300,8 +301,8 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     if (mode !== "calendar" || readerOpened || eventEditor || editor || eventDelete) return;
     if (selectedEvent) eventPanel.current?.focus();
     else if (detailOpen) inspector.current?.focus();
-    else calendarOrigin.current?.focus({ preventScroll: true });
-  }, [mode, selectedEvent?.id, selectedId, detailOpen, readerOpened, !!eventEditor, !!editor]);
+    else (calendarOrigin.current?.isConnected ? calendarOrigin.current : calendarMain.current?.querySelector<HTMLElement>("button:not(:disabled)"))?.focus({ preventScroll: true });
+  }, [mode, eventId, selectedEvent?.id, selectedId, detailOpen, readerOpened, !!eventEditor, !!editor]);
   const closeEvent = () => { if (!eventDelete && !calendar.pending) setEventId(null); };
   const saveEvent = async (input: CalendarEventInput) => {
     const editing = eventEditor;
@@ -315,7 +316,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     setCalendarStatus(editing.existing ? "Event saved." : "Event added to your Emc² calendar.");
     return null;
   };
-  const closeDelete = () => { if (!calendar.pending) { setEventDelete(null); setDeleteError(""); } };
+  const closeDelete = () => { if (!calendar.pending) { setEventDelete(null); setDeleteError(""); if (!selectedEvent) setEventId(null); } };
   const deleteEvent = async () => {
     if (!eventDelete || calendar.pending) return;
     setDeleteError("");
@@ -354,7 +355,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
         {mode === "calendar" && <div className="work-toolbar"><button className="button" type="button" disabled={blocked} onClick={() => setEditor("new")}>Add task</button></div>}
         {mode === "calendar" && calendar.error && <p role="alert">{calendar.error}</p>}
         {mode === "calendar" && <><p className="work-meta" role="status">{calendarStatus}</p><GoogleCalendar state={state} calendar={calendar} api={api} month={calendarMonth} accountFilter={accountFilter} /></>}
-        <div className={`work-layout${detailOpen || readerOpened || mode === "calendar" && selectedEvent ? " has-selection" : ""}${mode === "actions" ? " today-layout" : ""}${fullReading ? " full-reading" : ""}`}><div className="work-main">
+        <div className={`work-layout${detailOpen || readerOpened || mode === "calendar" && selectedEvent ? " has-selection" : ""}${mode === "actions" ? " today-layout" : ""}${fullReading ? " full-reading" : ""}`}><div className="work-main" ref={calendarMain}>
           {mode === "calendar" ? <Calendar items={commitments} messages={state.messages.filter((mail) => (accountFilter === "all" || mail.accountId === accountFilter) && state.accounts.some((account) => account.id === mail.accountId))}
             events={visibleEvents} now={now} selectedEventId={selectedEvent?.id} jump={calendarJump} onMonthChange={setCalendarMonth}
             onOpenMail={(mail, origin) => { calendarOrigin.current = origin; setEventId(null); setDetailOpen(false); onOpen(mail); }}

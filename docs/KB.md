@@ -1284,7 +1284,7 @@ so retrying an uncertain save cannot create a copy.
 
 Calendar day-list and agenda rows stretch their text across the row instead of centering each line. Event dialogs keep the heading and close control outside the scrolling form. The renderer document title is Emc², matching the native window title.
 
-Invitation and cancellation draft controls stay disabled until the local event has an account. Deleting a local event uses the shared confirmation dialog, sends no cancellation, and retains the captured revision across a failed request. Cancel and Escape restore focus; pending deletion blocks dismissal and app navigation.
+Invitation and cancellation draft controls stay disabled until the local event has a currently connected account. Deleting a local event uses the shared confirmation dialog, sends no cancellation, and retains the captured revision across a failed request. Cancel and Escape restore focus to the trigger, or a Calendar control if a confirmed refresh removed it after response loss; pending deletion blocks dismissal and app navigation.
 
 The shared `EventForm` disables all editable controls while either caller saves.
 Cancel, dialog close and app navigation remain guarded during the request. A

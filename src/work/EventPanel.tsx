@@ -97,7 +97,7 @@ export const EventDetail = forwardRef<HTMLElement, {
     {event.description && <><h3>Notes</h3><p className="event-notes"><Redact text={event.description} /></p></>}
     {source && <><h3>From email</h3>{source}</>}
     {event.source === "google" && <p className="work-meta">Google event details. Read-only in Emc².{api && " Your response can be changed explicitly."}</p>}
-    {api && <CalendarActions key={`${event.id}:${event.revision}`} event={event} api={api} google={google} onOpenDraft={onOpenDraft} onChanged={onChanged} onReviewResult={(result) => setReviewed({ sourceId: event.id, event: result })} />}
+    {api && <CalendarActions key={`${event.id}:${event.revision}`} event={event} api={api} google={google} accountAvailable={index >= 0} onOpenDraft={onOpenDraft} onChanged={onChanged} onReviewResult={(result) => setReviewed({ sourceId: event.id, event: result })} />}
     {event.source === "local" && onEdit && onDelete && <div className="form-actions"><button className="button" type="button" disabled={pending} onClick={onEdit}>Edit event</button><button type="button" className="trash-action" disabled={pending} onClick={onDelete}>Delete event</button></div>}
   </section>;
 });
