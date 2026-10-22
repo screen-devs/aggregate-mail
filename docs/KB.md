@@ -501,8 +501,10 @@ audible playback and hidden-window sound require separate OS acceptance.
 
 The desktop window hides to a tray icon when it is closed; the app, its mail
 service and its five-minute main-process sync keep running, and only the tray's
-Quit item, a system session end or an application quit ends the process. The
-tray reopens the window, and a second launch restores it.
+Quit item, Linux Ctrl+Q, a system session end or an application quit ends the
+process. Linux Ctrl+Q uses normal application quit and retains the draft and
+unknown-send close warning; Keep editing cancels it. Additional modifiers and
+repeated key events do not invoke it. The tray reopens the window, and a second launch restores it.
 
 The macOS tray uses a 16-pixel template image so the system renders it for the
 menu bar appearance. Linux resizes the application icon to 22 pixels; Windows

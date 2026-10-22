@@ -456,7 +456,7 @@ else {
           tray.on("click", showWindow);
         }
         // Closing the window leaves the app, its mail service and its sync
-        // running; only Quit in the tray menu or the system session ends it.
+        // running; Quit in the tray menu, Ctrl+Q on Linux or the system session ends it.
         window.on("close", (event) => {
           if (quitting) return;
           event.preventDefault();
@@ -471,6 +471,11 @@ else {
           window?.webContents.send("window-state", !!window?.isMaximized());
         window.on("maximize", reportWindowState);
         window.on("unmaximize", reportWindowState);
+        if (isLinux) window.webContents.on("before-input-event", (event, input) => {
+          if (input.type !== "keyDown" || input.key.toLowerCase() !== "q" || !input.control || input.meta || input.alt || input.shift || input.isAutoRepeat) return;
+          event.preventDefault();
+          app.quit();
+        });
         window.webContents.on("context-menu", (_event, params) => {
           const items = editingMenu(params);
           if (items.length && window) Menu.buildFromTemplate(items).popup({ window });

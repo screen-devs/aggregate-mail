@@ -52,6 +52,7 @@ await build({
         const handlers = new Map();
         const ipcHandlers = new Map(); let lastWindow, windows = 0, chromeRan = false, prompts = 0, clipboardRan = false, opencodeRan = false, opencodeSetupRan = false;
         const copiedText = [];
+        let quitCalls = 0, shortcutInputs = 0, shortcutPrevented = 0;
         export const clipboard = { async writeText(value) {
           await new Promise(resolve => setImmediate(resolve));
           if (config.clipboardFailure) throw Error('Native clipboard unavailable');
@@ -95,6 +96,11 @@ await build({
             let prevented = false;
             for (const handler of handlers.get('before-quit') || []) handler({ preventDefault() { prevented = true; } });
             if (prevented) return;
+            if (config.quitShortcutCase) {
+              quitCalls++; lastWindow.close();
+              if (!lastWindow.destroyed) return;
+              console.log(JSON.stringify({ quitShortcut: 'exited', quitCalls, shortcutInputs, shortcutPrevented, prompts }));
+            }
             for (const handler of handlers.get('will-quit') || []) handler({});
             release(); process.exit(0);
           }, exit(code) { release(); process.exit(code); }
@@ -116,7 +122,7 @@ await build({
         };
         export const dialog = {
           showErrorBox(_title, message) { console.error('dialog:' + message); },
-          showMessageBoxSync() { prompts++; return config.chromeCase === 'accept' || config.opencodeReplace === 'accept' ? 1 : 0; }
+          showMessageBoxSync() { prompts++; return config.chromeCase === 'accept' || config.quitShortcutCase === 'accept' || config.opencodeReplace === 'accept' ? 1 : 0; }
         }, ipcMain = { on(channel, handler) { ipcHandlers.set(channel, handler); }, handle(channel, handler) { ipcHandlers.set(channel, handler); } }, shell = {}, nativeTheme = { themeSource: "system" };
         export const nativeImage = {
           createFromPath(imagePath) {
@@ -174,7 +180,7 @@ await build({
             for (const handler of this.handlers.get('close') || [])
               handler({ preventDefault() { prevented = true; } });
             if (prevented) return;
-            if (config.chromeCase) {
+            if (config.chromeCase || ['cancel', 'accept'].includes(config.quitShortcutCase)) {
               let discard = false;
               this.contentHandlers.get('will-prevent-unload')?.({ preventDefault() { discard = true; } });
               if (!discard) return;
@@ -288,6 +294,21 @@ await build({
               for (const handler of handlers.get(event) || []) handler();
             console.log(JSON.stringify({ destroyedActivation: 'passed', windows }));
             app.quit();
+          }
+          if (config.quitShortcutCase && !chromeRan && options) {
+            chromeRan = true;
+            const first = lastWindow;
+            const emit = input => {
+              shortcutInputs++;
+              first.contentHandlers.get('before-input-event')?.({ preventDefault() { shortcutPrevented++; } }, input);
+            };
+            const base = { type: 'keyDown', key: 'q', control: true, meta: false, alt: false, shift: false, isAutoRepeat: false };
+            for (const patch of [{ type: 'keyUp' }, { key: 'x' }, { control: false }, { shift: true }, { alt: true }, { meta: true }, { isAutoRepeat: true }]) emit({ ...base, ...patch });
+            if (quitCalls || shortcutPrevented) throw Error('Unrelated key invoked Quit');
+            emit({ ...base, key: config.shortcutKey || 'q' });
+            first.close();
+            console.log(JSON.stringify({ quitShortcut: 'retained', quitCalls, shortcutInputs, shortcutPrevented, prompts, destroyed: first.destroyed, visible: first.visible }));
+            config.quitShortcutCase = undefined;
           }
           if (config.chromeCase && !chromeRan && options) {
             chromeRan = true;
@@ -878,3 +899,23 @@ for (const chromeCase of ["cancel", "accept"]) test(`caption-control recreation 
   if (chromeCase === "accept") { assert.equal(receipt.width, 1100); assert.equal(receipt.x, 12); }
   preserved(saved.profile, saved);
 });
+
+
+for (const platform of ["linux", "darwin", "win32"]) for (const quitShortcutCase of ["plain", "cancel", "accept"])
+ test(`Ctrl+Q uses normal quit and preserves draft ${quitShortcutCase} on ${platform}`, () => {
+  const saved = fixture("Emc²");
+  const result = launch(saved.appData, { platform, quitShortcutCase, shortcutKey: quitShortcutCase === "accept" ? "Q" : "q" });
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(result.stdout.match(/\{"quitShortcut"[^\n]+/)?.[0] ?? "{}");
+  const quits = platform === "linux";
+  assert.equal(receipt.shortcutInputs, 8, "unrelated keys must never quit");
+  assert.equal(receipt.shortcutPrevented, quits ? 1 : 0);
+  assert.equal(receipt.quitCalls, quits ? 1 : 0);
+  assert.equal(receipt.prompts, quits && quitShortcutCase !== "plain" ? 1 : 0);
+  if (quits && quitShortcutCase !== "cancel") assert.equal(receipt.quitShortcut, "exited");
+  else {
+    assert.equal(receipt.quitShortcut, "retained");assert.equal(receipt.destroyed, false);assert.equal(receipt.visible, false, "close still hides after a cancelled quit");
+    assert.match(result.stdout, /"startup":"passed"/);
+  }
+  preserved(saved.profile, saved);
+ });
