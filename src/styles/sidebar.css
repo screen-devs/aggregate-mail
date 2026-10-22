@@ -78,37 +78,47 @@
     width 320ms var(--spring),
     height 320ms var(--spring);
 }
-/* Inbox categories: a segmented row in the manner of Apple Mail. The current
-   category sits on a sliding wash; beside the reader, the others show only
-   their icon and count. */
+/* Inbox categories in the manner of Apple Mail: quiet secondary text, the
+   active category strong in primary text, and a 2px accent underline that
+   slides to it along the header hairline instead of a wash. Beside the
+   reader, the other categories show only their icon and count. */
 .inbox-tabs {
   display: flex;
   flex-shrink: 0;
-  align-items: center;
-  gap: 2px;
-  height: 44px;
-  padding: 0 10px;
+  align-items: stretch;
+  gap: 16px;
+  height: 100%;
   overflow-x: auto;
-  border-bottom: 1px solid var(--line);
 }
 .inbox-tabs button {
   position: relative;
-  height: 30px;
+  height: 100%;
   flex-shrink: 0;
   justify-content: center;
   gap: 7px;
-  padding: 0 12px;
-  border-radius: var(--radius-control);
+  padding: 0;
   font-size: calc(13px * var(--text-scale, 1));
-  color: var(--text-3);
+  color: var(--text-2);
   transition: color 160ms var(--ease-out);
 }
-.inbox-tabs button:hover,
-.inbox-tabs button.active {
+.inbox-tabs button:hover {
   color: var(--text);
 }
 .inbox-tabs button.active {
-  font-weight: 500;
+  color: var(--text);
+  font-weight: 600;
+}
+/* The selection marker is the underline itself: it sits on the header's
+   bottom hairline and is exactly as wide as the tab's content. */
+.inbox-tabs .sliding-hover {
+  display: none;
+}
+.sliding-nav.horizontal.inbox-tabs .sliding-wash {
+  top: auto;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 1px 1px 0 0;
+  background: var(--accent);
 }
 .tab-count {
   font-size: calc(12px * var(--text-scale, 1));
@@ -120,17 +130,12 @@
   container-type: inline-size;
 }
 .workspace.split .inbox-tabs {
-  gap: 0;
-  padding: 0 8px;
+  gap: 10px;
+  padding: 0;
 }
 .workspace.split .inbox-tabs button {
-  flex: 1 1 0;
   min-width: 0;
   gap: 5px;
-  padding: 0 6px;
-}
-.workspace.split .inbox-tabs button.active {
-  flex: 2.2 1 auto;
 }
 .workspace.split .inbox-tabs button:not(.active) .tab-label {
   position: absolute;

@@ -988,7 +988,7 @@ export function App() {
       >
         <ToastStack toasts={toasts} onDismiss={dismissToast} position={notifications.position} preferences={notifications} onOpen={requestNotificationMail} />
         {palette && !updateInstalling && <CommandPalette commands={commands} onClose={() => setPalette(false)} />}
-        <div className="app-update-control" style={{ right: systemCaption ? 154 : drawsWindowControls && windowSide === "right" ? 106 : 12 }}>
+        <div className="app-update-control" style={{ right: systemCaption ? 150 : drawsWindowControls && windowSide === "right" ? 76 : 12 }}>
           <UpdateNotice bridge={window.desktop?.updates} onInstalling={setUpdateInstalling} />
         </div>
         <div className="frame" inert={updateInstalling || palette}>
@@ -1025,7 +1025,7 @@ export function App() {
             }}
           />
           <div className="app-main">
-            <PaneHeader className="app-toolbar update-reserved" corner={corner("main")} maximized={maximized} lead={sidebarToggle}>
+            <PaneHeader className="app-toolbar" corner={corner("main")} maximized={maximized} lead={sidebarToggle}>
               {historyControls}
               <SearchToolbar inputRef={searchRef} query={settings || workView ? "" : query}
                 label={`Search ${settings || workView ? "all" : viewNames[view]} cached mail`}
@@ -1051,6 +1051,7 @@ export function App() {
                 {privacyButton}
                 {!settings && view !== "drafts" && !workView && senderToggle}
               </div>
+              <div className="update-spacer" aria-hidden="true" />
             </PaneHeader>
             <div hidden={!searching || settings || workView} className="search-help">
               <span id="mail-search-help" role={search.error ? "alert" : undefined}>{search.error || `Cached ${viewNames[view]} · current account and filters`}</span>
@@ -1058,7 +1059,7 @@ export function App() {
             </div>
         {settings ? (
           <div className="settings-pane">
-            <PaneHeader className="main-head update-reserved" corner={null} maximized={maximized}>
+            <PaneHeader className="main-head" corner={null} maximized={maximized}>
               <h1 className="pane-title">Settings</h1>
             </PaneHeader>
             <CredentialFallbackNotice mode={window.desktop?.credentialFallback} />
@@ -1144,14 +1145,14 @@ export function App() {
         ) : workView ? (
           <main className="work-pane">
             <Workbench key={`${view}:${accountFilter}:${trackingSession}`} work={work} initialSource={trackingSource} initialItem={trackingItem} initialDraft={trackingDraft} onSourceConsumed={() => { setTrackingSource(undefined); setTrackingItem(undefined); setTrackingDraft(undefined); }} onModalChange={setWorkModal} mode={view as "actions" | "calendar" | "projects" | "agents"} state={state} api={api} accountFilter={accountFilter} onOpen={inlineWorkView ? openWorkSource : jumpTo} onMailChanged={reload} onNotice={setNotice} onManageAssistants={() => navigate({ page: "settings", settingsSection: "mcp", opened: false })} onOpenDraft={openCompose}
-              renderHead={(tools) => <PaneHeader className="main-head update-reserved" corner={null} maximized={maximized}><h1 className="pane-title">{viewNames[view]}</h1><div className="head-tools">{tools}</div></PaneHeader>}
+              renderHead={(tools) => <PaneHeader className="main-head" corner={null} maximized={maximized}><h1 className="pane-title">{viewNames[view]}</h1><div className="head-tools">{tools}</div></PaneHeader>}
               readerOpened={opened} fullReading={!splitRoom} onCloseReader={closeReader}
               reader={selected && opened ? <div ref={readerRef} className="today-mail">{actions}{reader}</div> : undefined} />
           </main>
         ) : (
           <main className={split ? "workspace split" : "workspace"}>
             <section className="list-pane">
-              <PaneHeader className={!contextShown && !split ? "main-head update-reserved" : "main-head"} corner={null} maximized={maximized}>
+              <PaneHeader className="main-head" corner={null} maximized={maximized}>
                 <h1 className="pane-title">{viewNames[view]}</h1>
                 {view === "inbox" && !query && (
                   <InboxTabs tab={tab} unread={tabUnread} onTab={switchTab} />
@@ -1210,7 +1211,7 @@ export function App() {
             </section>
             {split && (
               <section className="reader-pane" aria-label="Reading pane">
-                <PaneHeader className={contextShown ? "reader-head" : "reader-head update-reserved"} corner={null} maximized={maximized}>
+                <PaneHeader className="reader-head" corner={null} maximized={maximized}>
                   {opened && actions}
                 </PaneHeader>
                 <div ref={readerRef} className="reader-scroll">
@@ -1222,7 +1223,7 @@ export function App() {
             )}
             {contextShown && (
               <aside className="context" aria-label="Sender context">
-                <PaneHeader className="context-head update-reserved" corner={null} maximized={maximized} />
+                <PaneHeader className="context-head" corner={null} maximized={maximized} />
                 <SenderPanel
                   selected={selected}
                   account={selectedAccount}

@@ -1697,6 +1697,15 @@ test('pane tools live in the persistent toolbar and section controls share the t
       assert.ok(control.closest(".app-toolbar"), `${label} sits in the persistent toolbar`);
       assert.equal(control.closest(".main-head, .reader-head"), null, `${label} left the pane headers`);
     }
+    const toolbar = ui.container.querySelector<HTMLElement>(".app-toolbar")!;
+    const spacer = toolbar.querySelector<HTMLElement>(".update-spacer")!;
+    assert.ok(spacer, "the toolbar reserves the update control's slot in the flow");
+    const order = [...toolbar.children];
+    assert.ok(order.indexOf(toolbar.querySelector(".pane-tools")!) < order.indexOf(spacer), "the update slot follows the pane tools");
+    const lights = toolbar.querySelector(".traffic");
+    if (lights) assert.equal(lights.previousElementSibling, spacer, "the update slot sits right before the window controls");
+    const update = ui.container.querySelector<HTMLElement>(".app-update-control")!;
+    assert.equal(update.closest(".frame"), null, "the update control stays usable while the frame is inert");
     const tabs = ui.container.querySelector(".inbox-tabs")!;
     assert.ok(tabs.parentElement?.classList.contains("main-head"), "Inbox tabs sit inside the header");
     assert.ok(tabs.previousElementSibling?.classList.contains("pane-title"), "tabs follow the title");
