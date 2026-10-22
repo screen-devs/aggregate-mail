@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Disable invitation and cancellation drafts until an event has an account. Confirm local event deletion in the app dialog, with guarded pending requests and retained errors.
+
 - Use Emc² in the window title, left-align Calendar rows, and keep event dialog headings visible while the form scrolls.
 
 - Allow the CI test step 12 minutes. The serial suite reached the 8-minute limit on hosted Intel macOS runners.

@@ -48,8 +48,8 @@ export function CalendarActions({ event, api, google, invitation, onOpenDraft, o
     {notice && <p role="status">{notice}</p>}
     {!event.cancelled && event.source === "local" && <>
       {!event.accountId && <p>Choose a connected account in Edit event before preparing an invitation.</p>}
-      <div className="form-actions"><button type="button" disabled={pending || !onOpenDraft} onClick={() => void prepare("REQUEST")}>Prepare invitation draft</button>
-      <button type="button" disabled={pending || !onOpenDraft} onClick={() => void prepare("CANCEL")}>Prepare cancellation draft</button></div>
+      <div className="form-actions"><button type="button" disabled={pending || !event.accountId || !onOpenDraft} onClick={() => void prepare("REQUEST")}>Prepare invitation draft</button>
+      <button type="button" disabled={pending || !event.accountId || !onOpenDraft} onClick={() => void prepare("CANCEL")}>Prepare cancellation draft</button></div>
     </>}
     {operation?.kind === "google-insert" && operation.state === "complete" && operation.result && onReviewResult && <button type="button" onClick={() => onReviewResult(operation.result!)}>Review created Google event</button>}
     {operation?.state === "unknown" ? <><p role="alert">A Google action has an unknown outcome. No automatic retry is allowed.</p><button type="button" disabled={pending || !!invitation && (operation.sourceMailId !== invitation.mailId || operation.sourceFingerprint !== invitation.fingerprint)} onClick={() => void googleWrite()}>Check submitted Google action</button></>

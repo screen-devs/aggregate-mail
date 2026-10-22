@@ -80,3 +80,30 @@ test("removed-account event sources explicitly unlink before reassignment; Cance
     for (const [key, value] of oldEnv) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   }
 });
+
+
+test("accountless local events cannot prepare invitation or cancellation drafts", async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: "http://localhost/" });
+  const globals = { window: dom.window, document: dom.window.document, navigator: dom.window.navigator, IS_REACT_ACT_ENVIRONMENT: true };
+  const prior = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
+  const { createRoot } = await import("react-dom/client"), { CalendarActions } = await import("./work/InvitationActions");
+  const container = document.getElementById("root")!, root = createRoot(container);
+  const requests: string[] = [];
+  const api: import("./api").Api = async <T,>(route: string, method = "GET") => {
+    requests.push(`${method} ${route}`); assert.equal(method, "GET"); return [] as T;
+  };
+  const event: CalendarEvent = { id: "unbound", source: "local", title: "Local event", start: "2026-10-22", end: "2026-10-23", allDay: true, attendees: [], revision: 1, updatedAt: 1 };
+  const render = (accountId?: string) => act(async () => root.render(<CalendarActions event={{ ...event, accountId }} api={api} google={false} onOpenDraft={() => assert.fail("No draft should open")} />));
+  const buttons = () => [...container.querySelectorAll<HTMLButtonElement>("button")].filter(button => /Prepare .* draft/.test(button.textContent!));
+  try {
+    await render();assert.match(container.textContent!, /Choose a connected account in Edit event/);
+    assert.equal(buttons().length, 2);
+    for (const button of buttons()) { assert.equal(button.disabled, true); await act(async () => button.click()); }
+    assert.deepEqual(requests, ["GET /calendar/operations?eventId=unbound"]);
+    await render("a");for (const button of buttons()) assert.equal(button.disabled, false);
+  } finally {
+    await act(async () => root.unmount());dom.window.close();
+    for (const [key, value] of prior) { if (value) Object.defineProperty(globalThis, key, value); else Reflect.deleteProperty(globalThis, key); }
+  }
+});

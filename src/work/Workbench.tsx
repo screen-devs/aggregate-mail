@@ -196,6 +196,8 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
   const [eventId, setEventId] = useState<string | null>(null);
   // A new event keeps one ID across retries so an uncertain save cannot create a copy.
   const [eventEditor, setEventEditor] = useState<{ fields: EventFields; existing?: CalendarEvent; id: string } | null>(null);
+  const [eventDelete, setEventDelete] = useState<CalendarEvent | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const calendarOrigin = useRef<HTMLElement | null>(null);
   const eventPanel = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState(initialDraft);
@@ -213,7 +215,7 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     wasReading.current = readerOpened;
   }, [readerOpened, mode]);
   const [projectEditor, setProjectEditor] = useState<Project | "new" | null>(null);
-  useEffect(() => { onModalChange?.(!!editor || !!projectEditor || !!eventEditor); return () => onModalChange?.(false); }, [!!editor, !!projectEditor, !!eventEditor, onModalChange]);
+  useEffect(() => { onModalChange?.(!!editor || !!projectEditor || !!eventEditor || !!eventDelete); return () => onModalChange?.(false); }, [!!editor, !!projectEditor, !!eventEditor, !!eventDelete, onModalChange]);
   const [projectId, setProjectId] = useState("");
   const [decision, setDecision] = useState("");
   const [decisionSources, setDecisionSources] = useState<string[]>([]);
@@ -295,12 +297,12 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
   const visibleEvents = useMemo(() => calendar.events.filter((event) => accountFilter === "all" || !event.accountId || event.accountId === accountFilter), [calendar.events, accountFilter]);
   const selectedEvent = visibleEvents.find((event) => event.id === eventId);
   useEffect(() => {
-    if (mode !== "calendar" || readerOpened || eventEditor || editor) return;
+    if (mode !== "calendar" || readerOpened || eventEditor || editor || eventDelete) return;
     if (selectedEvent) eventPanel.current?.focus();
     else if (detailOpen) inspector.current?.focus();
     else calendarOrigin.current?.focus({ preventScroll: true });
   }, [mode, selectedEvent?.id, selectedId, detailOpen, readerOpened, !!eventEditor, !!editor]);
-  const closeEvent = () => setEventId(null);
+  const closeEvent = () => { if (!eventDelete && !calendar.pending) setEventId(null); };
   const saveEvent = async (input: CalendarEventInput) => {
     const editing = eventEditor;
     if (!editing) return null;
@@ -313,17 +315,20 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
     setCalendarStatus(editing.existing ? "Event saved." : "Event added to your Emc² calendar.");
     return null;
   };
-  const deleteEvent = async (event: CalendarEvent) => {
-    if (!confirm("Delete this event from your Emc² calendar? This cannot be undone.")) return;
-    const result = await calendar.mutate(() => api(`/calendar/events/${encodeURIComponent(event.id)}`, "DELETE", { revision: event.revision }));
-    if (result.ok) { setCalendarStatus("Event deleted."); closeEvent(); } else setCalendarStatus(result.error);
+  const closeDelete = () => { if (!calendar.pending) { setEventDelete(null); setDeleteError(""); } };
+  const deleteEvent = async () => {
+    if (!eventDelete || calendar.pending) return;
+    setDeleteError("");
+    const result = await calendar.mutate(() => api(`/calendar/events/${encodeURIComponent(eventDelete.id)}`, "DELETE", { revision: eventDelete.revision }));
+    if (result.ok) { setEventDelete(null); setCalendarStatus("Event deleted."); setEventId(null); }
+    else setDeleteError(result.error);
   };
   const calendarPane = mode === "calendar" && (readerOpened
     ? <aside className="work-inspector calendar-reader" aria-label="Calendar reading pane">{reader || <p role="status">Opened email unavailable in cache. <button type="button" onClick={onCloseReader}>Back to calendar</button></p>}</aside>
     : selectedEvent ? <EventDetail ref={eventPanel} event={selectedEvent} state={state} pending={calendar.pending} api={api} google={calendar.google.some((value) => value.accountId === selectedEvent.accountId && value.status === "connected")} onOpenDraft={onOpenDraft} onChanged={calendar.refresh}
       source={selectedEvent.sourceMailId ? <Source id={selectedEvent.sourceMailId} state={state} onOpen={onOpen} /> : undefined}
       onClose={closeEvent} onEdit={() => setEventEditor({ fields: eventFields(selectedEvent), existing: selectedEvent, id: selectedEvent.id })}
-      onDelete={() => void deleteEvent(selectedEvent)} /> : detail);
+      onDelete={() => { setDeleteError(""); setEventDelete(selectedEvent); }} /> : detail);
   const openCount = sorted.filter(openCommitment).length;
   const closeProjectReader = () => {
     setSelectedId(null); setDetailOpen(false); missingSelection.current = false;
@@ -486,6 +491,14 @@ export function Workbench({ mode, state, api, work, accountFilter, initialSource
           const ok = await mutate(async () => { const saved = await api<Commitment>(editor === "new" ? "/commitments" : `/commitments/${encodeURIComponent(editor.id)}`, editor === "new" ? "POST" : "PATCH", input); if (editor === "new" && (mode === "actions" || mode === "projects") || mode === "projects" && saved.projectId !== projectId) closeProjectReader(); else { setSelectedId(saved.id); setDetailOpen(true); } });
           if (ok) setEditor(null); return ok;
         }} /></fieldset>
+      </Dialog>}
+      {eventDelete && <Dialog title="Delete event" onClose={closeDelete}>
+        <p className="dialog-copy">Delete this event from your Emc² calendar? This cannot be undone. No cancellation is sent to attendees.</p>
+        {deleteError && <p role="alert">{deleteError}</p>}
+        <div className="form-actions">
+          <button type="button" className="button" disabled={calendar.pending} onClick={closeDelete}>Cancel</button>
+          <button type="button" className="button trash-action" disabled={calendar.pending} aria-busy={calendar.pending} onClick={() => void deleteEvent()}>{calendar.pending ? "Deleting…" : "Delete event"}</button>
+        </div>
       </Dialog>}
       {eventEditor && <Dialog title={eventEditor.existing ? "Edit event" : "New event"} className="event-dialog" onClose={() => { if (!calendar.pending) setEventEditor(null); }}>
         <EventForm key={eventEditor.id} initial={eventEditor.fields} existing={eventEditor.existing} state={state} pending={calendar.pending}

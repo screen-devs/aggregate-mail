@@ -223,7 +223,7 @@ async function mount(mode: "actions"|"calendar"|"projects"|"agents"|"assistants"
     else if(url.startsWith("/calendar/google/")&&method==="PATCH"){const value=google.find(value=>value.accountId===decodeURIComponent(url.split("/")[3]))!;value.selectedIds=(body as any).selectedIds;value.stale=true;value.syncedAt=0;result={ok:true};}
     else if(url==="/calendar/events"&&method==="POST"){await eventSave;if(eventFailure)throw new Error("Synthetic event failure");const input=body as any;const saved=events.find(event=>event.id===input.id);if(saved)result=saved;else{const event:CalendarEvent={...input,attendees:input.attendees.map((email:string)=>({email})),source:"local",revision:1,updatedAt:1};events.push(event);result=event;}}
     else if(url.startsWith("/calendar/events/")&&method==="PATCH"){const id=decodeURIComponent(url.slice("/calendar/events/".length));const index=events.findIndex(event=>event.id===id);const{revision,...input}=body as any;assert.equal(revision,events[index].revision);events[index]={...input,attendees:input.attendees.map((email:string)=>({email})),id,source:"local",revision:revision+1,updatedAt:2};result=events[index];}
-    else if(url.startsWith("/calendar/events/")&&method==="DELETE"){const id=decodeURIComponent(url.slice("/calendar/events/".length));const index=events.findIndex(event=>event.id===id);assert.equal((body as any).revision,events[index].revision);events.splice(index,1);result={ok:true};}
+    else if(url.startsWith("/calendar/events/")&&method==="DELETE"){await eventSave;if(eventFailure)throw new Error("Synthetic event failure");const id=decodeURIComponent(url.slice("/calendar/events/".length));const index=events.findIndex(event=>event.id===id);assert.equal((body as any).revision,events[index].revision);events.splice(index,1);result={ok:true};}
     else if(url==="/state")result={...state,csrf:"synthetic"};else if(url==="/sync")result={errors:[]};
     else throw new Error(`Unexpected synthetic request ${method} ${url}`);
     return result as T;
@@ -920,9 +920,10 @@ test("calendar creates an Emc² event, shows it in the grid and day list, and ed
   const patch=ui.requests.find(request=>request.method==="PATCH"&&request.url.startsWith("/calendar/events/"))!;
   assert.equal(patch.body.revision,1);assert.equal(patch.body.title,"Moved review");assert.equal(patch.body.id,undefined);
   assert.ok(detail()?.textContent?.includes("Moved review"));
-  ui.confirm(false);await ui.click(ui.button("Delete event"));
+  await ui.click(ui.button("Delete event"));await ui.click(ui.button("Cancel"));
   assert.equal(ui.requests.some(request=>request.method==="DELETE"),false);assert.ok(detail());
-  ui.confirm(true);await ui.click(ui.button("Delete event"));
+  await ui.click(ui.button("Delete event"));
+  await ui.click(ui.container.querySelector<HTMLButtonElement>('[role="dialog"] .trash-action')!);
   assert.deepEqual(ui.requests.find(request=>request.method==="DELETE")!.body,{revision:2});
   assert.equal(detail(),null);assert.equal(ui.events.length,0);assert.ok(ui.container.textContent?.includes("Event deleted."));
   assert.equal(ui.requests.some(request=>request.url.startsWith("/commitments")),false,"events never create commitments");
@@ -1102,3 +1103,33 @@ for (const entry of ["event", "commitment", "snoozed"] as const) for (const exit
    assert.ok(document.activeElement === origin, "focus returns only after the origin's pane is visible");
   } finally { restore(); await ui.close(); }
  });
+
+
+test("event deletion uses a guarded dialog, retains failure and revision, and restores focus on cancel", async () => {
+ const ui=await mount("actions",true);try{
+  await ui.click(ui.button("Calendar"));
+  await ui.click(ui.button("New event"));await ui.fill("Title","Private event title");await saveEventForm(ui);
+  const trigger=ui.button("Delete event");await act(async()=>trigger.focus());await ui.click(trigger);
+  const dialog=()=>ui.container.querySelector<HTMLElement>('[role="dialog"][aria-label="Delete event"]');
+  assert.ok(dialog(),"delete must use the shared app dialog");
+  assert.doesNotMatch(dialog()!.textContent!,/Private event title/);
+  await ui.click(sidebarButton(ui, "Inbox"));assert.equal(ui.container.querySelector("h1")?.textContent,"Calendar","modal blocks navigation");
+  await act(async()=>window.dispatchEvent(new ui.dom.window.KeyboardEvent("keydown",{key:"Escape",bubbles:true})));
+  assert.equal(dialog(),null);assert.ok(document.activeElement===trigger,"Cancel returns focus to Delete event");assert.ok(ui.container.querySelector('[aria-label="Event details"]'));
+  assert.equal(ui.requests.some(request=>request.method==="DELETE"),false);
+  await ui.click(trigger);ui.failEvents(true);
+  const remove=()=>dialog()!.querySelector<HTMLButtonElement>(".trash-action")!;
+  await ui.click(remove());assert.ok(dialog());assert.match(dialog()!.querySelector('[role="alert"]')!.textContent!,/Synthetic failure/);
+  assert.equal(ui.events.length,1);assert.equal(remove().disabled,false);
+  ui.failEvents(false);const release=ui.holdEventSave();await ui.click(remove());
+  assert.equal(remove().disabled,true);assert.equal(ui.button("Cancel").disabled,true);
+  await ui.click(ui.button("Close dialog"));await ui.click(sidebarButton(ui, "Inbox"));
+  await act(async()=>window.dispatchEvent(new ui.dom.window.KeyboardEvent("keydown",{key:"Escape",bubbles:true})));
+  assert.ok(dialog());assert.equal(ui.container.querySelector("h1")?.textContent,"Calendar");
+  assert.equal(ui.requests.filter(request=>request.method==="DELETE").length,2);
+  await act(async()=>{release();});assert.equal(dialog(),null);assert.equal(ui.events.length,0);
+  assert.equal(ui.container.querySelector('[aria-label="Event details"]'),null);
+  assert.deepEqual(ui.requests.filter(request=>request.method==="DELETE").map(request=>request.body),[{revision:1},{revision:1}]);
+  assert.equal(ui.confirmations.length,0,"no native confirm prompt");
+ }finally{await ui.close();}
+});
