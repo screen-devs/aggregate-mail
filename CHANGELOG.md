@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use Emc² in the window title, left-align Calendar rows, and keep event dialog headings visible while the form scrolls.
+
 - Allow the CI test step 12 minutes. The serial suite reached the 8-minute limit on hosted Intel macOS runners.
 
 - Upgrade and pin CI actions, lint workflows before packaging, and group weekly Actions dependency updates. Reject incomplete release asset sets and artifact digest mismatches, serialize manual releases per ref, and support `[skip release]` in the final main commit message while ordinary CI still runs.

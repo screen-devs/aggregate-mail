@@ -69,7 +69,7 @@
 .calendar-count-label { display: none; }
 .calendar-agenda { list-style: none; margin: 0; padding: 0; }
 .calendar-agenda li { border-bottom: 1px solid var(--line); }
-.calendar-agenda button { display: flex; flex-direction: column; gap: 5px; width: 100%; text-align: left; padding: 12px 0; overflow-wrap: anywhere; }
+.calendar-agenda button { display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 100%; text-align: left; padding: 12px 0; overflow-wrap: anywhere; }
 .calendar-agenda strong { font-weight: 500; }
 .calendar-backlog { border-top: 1px solid var(--line); }
 @media (hover: hover) and (pointer: fine) {
@@ -247,6 +247,9 @@
 .event-detail .event-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .event-notes { white-space: pre-wrap; }
 .event-detail .form-actions { justify-content: flex-start; margin-top: 18px; }
+.event-dialog { display: flex; flex-direction: column; overflow: hidden; }
+.event-dialog > .dialog-title, .event-dialog > .event-source { flex-shrink: 0; }
+.event-dialog > .event-form { min-height: 0; overflow-y: auto; }
 .event-form { gap: 12px; text-align: left; }
 .event-form > .event-fields { display: flex; flex-direction: column; gap: 12px; min-width: 0; border: 0; margin: 0; padding: 0; }
 .event-form .note { margin: -6px 0 0; font-size: calc(12px * var(--text-scale, 1)); color: var(--text-2); }
