@@ -58,7 +58,7 @@
   "author": "Screen",
   "build": {
     "appId": "dev.screen.aggregate-mail",
-    "productName": "Emc²",
+    "productName": "Emc\u00b2",
     "directories": {
       "output": "release"
     },

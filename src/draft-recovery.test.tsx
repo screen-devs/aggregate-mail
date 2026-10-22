@@ -192,9 +192,22 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
 
     await click([...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find(button => button.textContent?.trim().startsWith("Inbox"))!);
     await click(container.querySelector<HTMLElement>(".row")!);
-    await click(container.querySelector<HTMLElement>(".mail-row .row-more")!);
-    await settle(() => !!container.querySelector('[role="menu"][aria-label="Message actions"]'));
-    await click([...container.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]')].find((item) => item.childNodes[0]?.textContent?.trim() === "Reply")!);
+    // The menu snapshots the row's disabled state at open; reopen it until the send drain clears.
+    let replyItem: HTMLButtonElement | undefined;
+    await settle(() => {
+      const menu = container.querySelector<HTMLElement>('[role="menu"][aria-label="Message actions"]');
+      if (!menu) {
+        container.querySelector<HTMLElement>(".mail-row .row-more")?.click();
+        return false;
+      }
+      replyItem = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.childNodes[0]?.textContent?.trim() === "Reply");
+      if (replyItem && !replyItem.disabled) return true;
+      menu.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      return false;
+    });
+    assert.ok(replyItem, "the row menu offers Reply");
+    assert.equal(replyItem.disabled, false, "Reply is enabled once the send drains");
+    await click(replyItem);
     await fill("textarea", "SYNTHETIC reply content");
     await settle(() => /Draft saved/.test(container.textContent!));
     const reply = store.all("draft")[0];
