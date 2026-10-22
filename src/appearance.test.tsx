@@ -24,7 +24,7 @@ test("transparency picks the Windows material live and migrates the earlier on/o
   await withDesktop("win32", async (calls, dom) => {
     const { applyAppearance, defaultAppearance, readAppearance } = await import("./appearance");
     dom.window.localStorage.setItem("emc2.appearance.v1", JSON.stringify({ theme: "midnight", accent: "pink", glass: false }));
-    assert.deepEqual(readAppearance(), { mode: "dark", theme: "midnight", accent: "pink", transparency: "off", reading: "split", customThemes: [] });
+    assert.deepEqual(readAppearance(), { mode: "dark", theme: "midnight", accent: "pink", transparency: "off", reading: "split", sizeByImportance: true, customThemes: [] });
     for (const transparency of ["glass", "subtle", "off"] as const)
       applyAppearance({ ...defaultAppearance, transparency });
     assert.deepEqual(calls.filter((call) => !call.startsWith("scheme:")), ["acrylic", "mica", "none"]);
@@ -61,9 +61,11 @@ test("custom selection and both palettes survive a restart, with safe fallback f
     const theme: CustomTheme = { id: `custom:${crypto.randomUUID()}`, name: "Nightfall", palettes: {
       dark: generatePalette("#1a1b26", "#7aa2f7", "dark"), light: generatePalette("#eef0f8", "#3456bc", "light"),
     } };
-    const value = { ...defaultAppearance, theme: theme.id, customThemes: [theme], mode: "system" as const };
+    const value = { ...defaultAppearance, theme: theme.id, customThemes: [theme], mode: "system" as const, sizeByImportance: false };
     assert.equal(saveAppearance(value), true);
     assert.deepEqual(readAppearance(), value);
+    dom.window.localStorage.setItem("emc2.appearance.v1", JSON.stringify({ sizeByImportance: "often" }));
+    assert.equal(readAppearance().sizeByImportance, true, "an invalid stored value falls back to sizing by importance");
     dom.window.localStorage.setItem("emc2.appearance.v1", JSON.stringify({ ...value, customThemes: [] }));
     assert.equal(readAppearance().theme, "black");
     assert.equal(saveAppearance({ ...value, customThemes: [] }), false, "never persist a dangling selection");

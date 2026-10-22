@@ -28,7 +28,7 @@ test("theme choices grow above accent swatches without inheriting the mail-row h
     assert.ok(["", "auto"].includes(height(".settings-row.stacked")), "Theme rows must grow with their previews and labels");
     assert.equal(height(".theme-preview"), "56px");
     assert.equal(height(".accent-choices button"), "22px");
-    assert.equal(height(".row.stacked"), "calc((var(--mail-row-high) * var(--text-scale, 1)) - 2px)", "Mail rows keep shared scaled windowing geometry");
+    assert.equal(height(".row.stacked"), "calc(var(--mail-row-high) * var(--text-scale, 1))", "Mail rows keep shared scaled windowing geometry");
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
     else Reflect.deleteProperty(globalThis, "window");

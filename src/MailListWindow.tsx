@@ -3,22 +3,21 @@ import type { Mail } from "../shared/types";
 import type { MailLocation } from "./navigation";
 import { dayGroup } from "./mail/format";
 
-export function MailListWindow({ messages, selectedId, focusSelection, density, sort, listRef, touchActions, narrow = false, children }: {
+export function MailListWindow({ messages, selectedId, focusSelection, density, sort, listRef, narrow = false, sizeByImportance = true, children }: {
   messages: Mail[];
   selectedId: string | undefined;
   focusSelection: boolean;
   density: "comfortable" | "compact";
   sort: MailLocation["sort"];
   listRef: RefObject<HTMLElement | null>;
-  touchActions: boolean;
   narrow?: boolean;
+  sizeByImportance?: boolean;
   children: (mail: Mail, index: number) => ReactNode;
 }) {
   const windowRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600, offset: 0 });
-  const [sizes, setSizes] = useState({ low: 30, medium: 36, high: 50, compact: 26, group: 30, actions: 0 });
+  const [sizes, setSizes] = useState({ low: 28, medium: 34, high: 48, compact: 24, group: 30 });
   const [measured, setMeasured] = useState(false);
-  const actionWidth = useRef<number | undefined>(undefined);
   const geometry = useMemo(() => {
     let height = 0;
     const groups: { label: string; top: number; height: number }[] = [];
@@ -30,14 +29,14 @@ export function MailListWindow({ messages, selectedId, focusSelection, density, 
         height += sizes.group;
       }
       const top = height;
-      height += (density === "compact" ? sizes.compact :
-        mail.relevance === 3 ? sizes.high : mail.relevance === 2 ? sizes.medium : sizes.low) +
-        (touchActions ? sizes.actions : 0);
+      height += density === "compact" ? sizes.compact :
+        !sizeByImportance ? sizes.medium :
+        mail.relevance === 3 ? sizes.high : mail.relevance === 2 ? sizes.medium : sizes.low;
       return { top, bottom: height };
     });
     if (groups.length) groups[groups.length - 1].height = height - groups[groups.length - 1].top;
     return { rows, groups, height };
-  }, [messages, density, sort, sizes, touchActions]);
+  }, [messages, density, sort, sizes, sizeByImportance]);
   const windowOffset = useCallback(() => {
     let offset = 0;
     let element: HTMLElement | null = windowRef.current;
@@ -52,34 +51,20 @@ export function MailListWindow({ messages, selectedId, focusSelection, density, 
     const element = windowRef.current;
     if (!list || !element) return;
     const style = window.getComputedStyle(list);
-    let actions = 0;
-    if (touchActions) for (const action of element.querySelectorAll<HTMLElement>(".mail-actions, .row-actions")) {
-      const actionStyle = window.getComputedStyle(action);
-      actions = Math.max(actions, action.getBoundingClientRect().height +
-        (parseFloat(actionStyle.marginTop) || 0) + (parseFloat(actionStyle.marginBottom) || 0));
-    }
     const scale = parseFloat(style.getPropertyValue("--text-scale")) || 1;
     const token = (name: string, fallback: number) => (parseFloat(style.getPropertyValue(`--mail-row-${narrow ? "card-" : ""}${name}`)) || fallback) * scale;
     const nextSizes = {
-      low: token("low", narrow ? 60 : 30),
-      medium: token("medium", narrow ? 80 : 36),
-      high: token("high", narrow ? 80 : 50),
-      compact: token("compact", narrow ? 54 : 26),
+      low: token("low", narrow ? 58 : 28),
+      medium: token("medium", narrow ? 78 : 34),
+      high: token("high", narrow ? 78 : 48),
+      compact: token("compact", narrow ? 52 : 24),
       group: (parseFloat(style.getPropertyValue("--mail-group-height")) || 30) * scale,
-      actions,
     };
-    const width = list.clientWidth;
-    const sameWidth = actionWidth.current === width;
-    actionWidth.current = width;
-    // Reserve the tallest action strip seen at this width so shorter rows cannot oscillate the geometry.
-    setSizes(current => {
-      const next = { ...nextSizes, actions: touchActions ? (sameWidth ? Math.max(current.actions, actions) : actions) : 0 };
-      return Object.keys(current).every(key => current[key as keyof typeof current] === next[key as keyof typeof next]) ? current : next;
-    });
+    setSizes(current => Object.keys(current).every(key => current[key as keyof typeof current] === nextSizes[key as keyof typeof nextSizes]) ? current : nextSizes);
     const next = { top: list.scrollTop, height: list.clientHeight || 600, offset: windowOffset() };
     setViewport(current => current.top === next.top && current.height === next.height && current.offset === next.offset ? current : next);
     setMeasured(true);
-  }, [listRef, touchActions, narrow, windowOffset]);
+  }, [listRef, narrow, windowOffset]);
   useLayoutEffect(measure);
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0, behavior: "instant" });
@@ -98,13 +83,6 @@ export function MailListWindow({ messages, selectedId, focusSelection, density, 
       observer?.disconnect();
     };
   }, [listRef, measure]);
-  // Touch actions can wrap after width or button-state changes without resizing the list itself.
-  useLayoutEffect(() => {
-    if (!touchActions || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    for (const action of windowRef.current?.querySelectorAll(".mail-actions, .row-actions") || []) observer.observe(action);
-    return () => observer.disconnect();
-  });
   const selectedIndex = useMemo(() => messages.findIndex(mail => mail.id === selectedId), [messages, selectedId]);
   const lastSelection = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {

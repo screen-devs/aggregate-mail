@@ -54,10 +54,12 @@ export type Appearance = {
   accent: AccentId;
   transparency: Transparency;
   reading: ReadingLayout;
+  // Rows follow relevance (high/medium/low heights) or one uniform medium row.
+  sizeByImportance: boolean;
   customThemes: CustomTheme[];
 };
 
-export const defaultAppearance: Appearance = { mode: "dark", theme: "black", accent: "blue", transparency: "glass", reading: "split", customThemes: [] };
+export const defaultAppearance: Appearance = { mode: "dark", theme: "black", accent: "blue", transparency: "glass", reading: "split", sizeByImportance: true, customThemes: [] };
 const storageKey = "emc2.appearance.v1";
 
 /** Whether the desktop window has an OS material behind it to show through. */
@@ -110,6 +112,7 @@ export function readAppearance(): Appearance {
       accent: oneOf(accents, input.accent) ? input.accent : defaultAppearance.accent,
       transparency,
       reading: oneOf(readingLayouts, input.reading) ? input.reading : defaultAppearance.reading,
+      sizeByImportance: typeof input.sizeByImportance === "boolean" ? input.sizeByImportance : defaultAppearance.sizeByImportance,
       customThemes: library,
     };
   } catch {
@@ -119,10 +122,10 @@ export function readAppearance(): Appearance {
 
 export function saveAppearance(value: Appearance): boolean {
   try {
-    const { mode, theme, accent, transparency, reading } = value;
+    const { mode, theme, accent, transparency, reading, sizeByImportance } = value;
     const library = customThemesSchema.parse(value.customThemes);
     if (!oneOf(themes, theme) && !library.some((custom) => custom.id === theme)) return false;
-    localStorage.setItem(storageKey, JSON.stringify({ mode, theme, accent, transparency, reading, customThemes: library }));
+    localStorage.setItem(storageKey, JSON.stringify({ mode, theme, accent, transparency, reading, sizeByImportance, customThemes: library }));
     return true;
   } catch {
     return false;

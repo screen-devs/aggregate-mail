@@ -34,6 +34,33 @@
 .mail-menu button:focus-visible {
   outline-offset: -3px;
 }
+/* The custom snooze time form sits inside the menu below the preset items. */
+.snooze-custom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 5px;
+  padding: 10px;
+  border-top: 1px solid var(--line);
+}
+.snooze-custom input {
+  height: 32px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+:root[data-scheme="dark"] .snooze-custom input { color-scheme: dark; }
+:root[data-scheme="light"] .snooze-custom input { color-scheme: light; }
+.snooze-custom .button { height: 32px; min-height: 0; width: auto; justify-content: center; }
+.snooze-custom [role="alert"] {
+  grid-column: 1 / -1;
+  color: var(--danger);
+  font-size: calc(12px * var(--text-scale, 1));
+}
 /* A custom dropdown, because the native select popup ignores the dark theme. */
 .dropdown {
   position: relative;

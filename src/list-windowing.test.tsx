@@ -27,9 +27,9 @@ async function mount(count = 3000, pageOffset = 0) {
     relevance: (index % 3 + 1) as Mail["relevance"], reason: "Synthetic reason",
     archived: false, snoozedUntil: null, html: null, images: [],
   }));
-  let height = 480, width = 1000, offset = 0, actionHeight = 40;
+  let height = 480, width = 1000, offset = 0;
   const props = { messages: all, selectedId: all[0]?.id, density: "comfortable" as "comfortable" | "compact",
-    sort: "relevance" as "relevance" | "newest" | "oldest", touchActions: false, focusSelection: true, narrow: false };
+    sort: "relevance" as "relevance" | "newest" | "oldest", focusSelection: true, narrow: false };
   const extent = () => offset + parseFloat(document.querySelector<HTMLElement>(".mail-window")?.style.height || "0");
   const positions = new WeakMap<HTMLElement, number>();
   Object.defineProperties(HTMLElement.prototype, {
@@ -55,14 +55,13 @@ async function mount(count = 3000, pageOffset = 0) {
   });
   const nativeRect = HTMLElement.prototype.getBoundingClientRect;
   HTMLElement.prototype.getBoundingClientRect = function () {
-    if (this.classList.contains("mail-actions")) return { height: actionHeight } as DOMRect;
     if (pageOffset && this.classList.contains("list"))
       return { top: pageOffset, bottom: pageOffset + height, height } as DOMRect;
     if (pageOffset && this.classList.contains("row")) {
       const mail = props.messages[Number(this.getAttribute("data-index"))];
       const top = pageOffset + offset + parseFloat(this.closest<HTMLElement>(".mail-window-row")!.style.top) -
         (document.querySelector<HTMLElement>(".list")?.scrollTop || 0);
-      const rowHeight = props.narrow ? (props.density === "compact" ? 54 : mail.relevance > 1 ? 80 : 60) : props.density === "compact" ? 26 : mail.relevance === 3 ? 50 : mail.relevance === 2 ? 36 : 30;
+      const rowHeight = props.narrow ? (props.density === "compact" ? 52 : mail.relevance > 1 ? 78 : 58) : props.density === "compact" ? 24 : mail.relevance === 3 ? 48 : mail.relevance === 2 ? 34 : 28;
       return { top, bottom: top + rowHeight, height: rowHeight } as DOMRect;
     }
     return nativeRect.call(this);
@@ -97,7 +96,6 @@ async function mount(count = 3000, pageOffset = 0) {
         <MailListWindow {...props} listRef={listRef}>{(mail, index) => <div className="mail-row">
           <button className="row" id={`mail-${mail.id}`} aria-current={mail.id === props.selectedId ? "true" : undefined}
             data-index={index}>{mail.subject}</button>
-          {props.touchActions && <div className="mail-actions" style={{ marginBottom: 8 }}><button>Done</button></div>}
         </div>}</MailListWindow>
       </section>
     </>));
@@ -121,9 +119,9 @@ async function mount(count = 3000, pageOffset = 0) {
     mounts: () => mounts,
     windowHeight: () => parseFloat(document.querySelector<HTMLElement>(".mail-window")!.style.height),
     select: async (index: number) => { props.selectedId = all[index]?.id; await render(); },
-    resize: async (nextHeight: number, nextWidth = width, nextActions = actionHeight, nextOffset = offset) => {
+    resize: async (nextHeight: number, nextWidth = width, nextOffset = offset) => {
       await act(async () => {
-        height = nextHeight; width = nextWidth; actionHeight = nextActions; offset = nextOffset;
+        height = nextHeight; width = nextWidth; offset = nextOffset;
         dom.window.dispatchEvent(new dom.window.Event("resize"));
         for (const notify of [...observers]) notify();
       });
@@ -188,19 +186,19 @@ test("25624-message first, middle and last selections restore focus and retain a
 test("density, date groups, offsets, resize, filtering, sort, shrink and empty arrays preserve reachability", async () => {
   const app = await mount(180);
   try {
-    assert.equal(app.windowHeight(), 60 * (30 + 36 + 50));
+    assert.equal(app.windowHeight(), 60 * (28 + 34 + 48));
     app.props.sort = "newest"; await app.render();
     const groups = app.document.querySelectorAll<HTMLElement>(".mail-window-date");
     assert.ok(groups.length >= 3);
-    assert.ok(Math.abs(app.windowHeight() - (60 * (30 + 36 + 50) + groups.length * 30)) < 0.01);
+    assert.ok(Math.abs(app.windowHeight() - (60 * (28 + 34 + 48) + groups.length * 30)) < 0.01);
     assert.ok([...groups].every(group => parseFloat(group.style.height) > 30));
     await app.scroll(3000);
     const before = app.scrolls.length;
-    await app.resize(700, 1000, 40, 200);
+    await app.resize(700, 1000, 200);
     assert.equal(app.list().scrollTop, 3000);
     assert.equal(app.scrolls.length, before);
     app.props.density = "compact"; await app.render();
-    assert.ok(Math.abs(app.windowHeight() - (180 * 26 + groups.length * 30)) < 0.01);
+    assert.ok(Math.abs(app.windowHeight() - (180 * 24 + groups.length * 30)) < 0.01);
     await app.scroll(app.list().scrollHeight);
     assert.ok(app.row(179));
     app.props.messages = [...app.all].reverse(); app.props.sort = "oldest"; await app.render();
@@ -216,29 +214,6 @@ test("density, date groups, offsets, resize, filtering, sort, shrink and empty a
     assert.equal(app.rows().length, 0); assert.equal(app.windowHeight(), 0);
     app.props.messages = app.all; await app.render();
     assert.ok(app.row(0)); assert.ok(app.rows().length < 50);
-  } finally { await app.close(); }
-});
-
-test("touch action measurement reserves wrapping height and observes controls without selection snapping", async () => {
-  const app = await mount(180);
-  try {
-    app.props.touchActions = true; await app.render();
-    assert.equal(app.windowHeight(), 60 * (30 + 36 + 50) + 180 * 48);
-    assert.ok([...app.observed].some(element => element.classList.contains("mail-actions")));
-    await app.scroll(3000);
-    const before = app.scrolls.length;
-    await app.resize(480, 500, 80);
-    assert.equal(app.windowHeight(), 60 * (30 + 36 + 50) + 180 * 88);
-    assert.equal(app.list().scrollTop, 3000);
-    assert.equal(app.scrolls.length, before);
-    await app.scroll(app.list().scrollHeight);
-    assert.ok(app.row(179));
-    app.props.density = "compact"; await app.render();
-    assert.equal(app.windowHeight(), 180 * (26 + 88));
-    await app.resize(480, 1000, 40);
-    assert.equal(app.windowHeight(), 180 * (26 + 48), "wider layout can release the wrapped action space");
-    app.props.touchActions = false; await app.render();
-    assert.equal(app.windowHeight(), 180 * 26);
   } finally { await app.close(); }
 });
 
@@ -280,7 +255,7 @@ test("selection remains visible when the list sits inside an offset page ancesto
       `selected row top ${selected.top} must be inside viewport starting at ${viewport.top}`);
     assert.ok(selected.bottom <= viewport.bottom,
       `selected row bottom ${selected.bottom} must be inside viewport ending at ${viewport.bottom}`);
-    assert.equal(app.list().scrollTop, 726, "selection scrolling excludes the page ancestor offset");
+    assert.equal(app.list().scrollTop, 688, "selection scrolling excludes the page ancestor offset");
   } finally { await app.close(); }
 });
 
@@ -288,7 +263,7 @@ test("split cards retain every message across density and pane layout changes", 
   const app = await mount(3000);
   try {
     app.props.narrow = true; await app.render();
-    assert.ok(Math.abs(app.windowHeight() - 1000 * (60 + 80 + 80)) < 0.001);
+    assert.ok(Math.abs(app.windowHeight() - 1000 * (58 + 78 + 78)) < 0.001);
     const seen = new Set<string>();
     for (let top = 0; top < app.list().scrollHeight; top += 430) {
       await app.scroll(top);
@@ -298,11 +273,11 @@ test("split cards retain every message across density and pane layout changes", 
     assert.equal(seen.size, 3000);
     assert.ok(app.row(2999));
     app.props.density = "compact"; await app.render();
-    assert.ok(Math.abs(app.windowHeight() - 3000 * 54) < 0.001);
+    assert.ok(Math.abs(app.windowHeight() - 3000 * 52) < 0.001);
     await app.select(2999);
     assert.equal(app.document.activeElement, app.row(2999));
     app.props.narrow = false; await app.render();
-    assert.equal(app.windowHeight(), 3000 * 26);
+    assert.equal(app.windowHeight(), 3000 * 24);
     await app.scroll(app.list().scrollHeight);
     assert.ok(app.row(2999), "returning to the wide list retains the tail");
   } finally { await app.close(); }

@@ -677,7 +677,7 @@ export function App() {
     { id: "archive", label: "Archive", key: shortcut("done"), disabled: busy || syncing || mail.archived || mail.direction === "sent", separator: true, run: () => archive(mail) },
     { id: "snooze", label: "Snooze", key: shortcut("snooze"), disabled: busy || syncing || mail.archived || mail.direction === "sent", run: () => showSnooze(mail) },
     ...(isSnoozed(mail) ? [{ id: "unsnooze", label: "Return to inbox", disabled: busy || syncing, run: () => void changeMessage(mail, "unsnooze") }] : []),
-    { id: "trash", label: "Move to Trash", disabled: busy || syncing || !!trashUnavailable(mail), run: () => setTrashMail(mail) },
+    { id: "trash", label: "Move to Trash", disabled: busy || syncing || !!trashUnavailable(mail), description: trashUnavailable(mail), run: () => setTrashMail(mail) },
     { id: "track", label: "Track work", disabled: busy || navigationBlocked, run: () => openTracking(mail) },
     { id: "meeting", label: "Schedule meeting", disabled: busy || navigationBlocked, run: () => openMeeting(mail) },
     { id: "teach", label: "Teach sorting", key: shortcut("teach"), disabled: busy || syncing, separator: true, run: () => setTeach(mail) },
@@ -766,7 +766,7 @@ export function App() {
       else if (inbox && action === "density") setDensity((value) => value === "comfortable" ? "compact" : "comfortable");
       else if (inbox && action === "important") switchView("inbox");
       else if (inbox && action === "other") nextTab();
-      else if (target instanceof HTMLElement && target.closest(".row-actions") &&
+      else if (target instanceof HTMLElement && target.closest(".row-more") &&
         ["next", "previous", "open", "done", "reply", "snooze", "teach"].includes(action ?? "")) return;
       else if (inbox && (action === "next" || action === "previous")) {
         event.preventDefault();
@@ -957,6 +957,14 @@ export function App() {
       </button>
     </nav>
   );
+  const updateAppearance = (value: typeof appearance) => {
+    if (!saveAppearance(value)) {
+      setNotice("Appearance could not be saved on this device.");
+      return false;
+    }
+    setAppearance(value);
+    return true;
+  };
   const paletteActions = {
     important: () => switchView("inbox"), search: showSearch, compose: () => startCompose(),
     settings: () => setSettings(true), privacy: togglePrivacy, help: () => setShortcuts(true),
@@ -965,6 +973,7 @@ export function App() {
   const commands: PaletteCommand[] = [
     ...interactionActions.flatMap(({ id, label }) => id in paletteActions ? [{ id, label, shortcut: shortcut(id),
       run: paletteActions[id as keyof typeof paletteActions] }] : []),
+    { id: "row-sizing", label: "Size rows by importance on / off", run: () => updateAppearance({ ...appearance, sizeByImportance: !appearance.sizeByImportance }) },
     ...(["actions", "calendar", "projects", "agents", "sent", "all"] as const).map((next) => ({ id: `view-${next}`, label: `Open ${viewNames[next]}`, run: () => navigate({ page: "mail", view: next, opened: false }) })),
     { id: "drafts", label: "Open Drafts", disabled: !state.accounts.length, run: () => switchView("drafts") },
     { id: "archive-view", label: "Show Archive", run: () => switchView("archive") },
@@ -1122,14 +1131,7 @@ export function App() {
                 onOpen={jumpTo} onMailChanged={reload} onNotice={setNotice} onModalChange={setWorkModal} renderHead={(tools) => <div className="settings-group-label"><h2>Your assistants</h2>{tools}</div>} />}
               appearance={appearance}
               scheme={themePreview?.scheme ?? scheme}
-              onAppearance={(value) => {
-                if (!saveAppearance(value)) {
-                  setNotice("Appearance could not be saved on this device.");
-                  return false;
-                }
-                setAppearance(value);
-                return true;
-              }}
+              onAppearance={updateAppearance}
               onThemePreview={setThemePreview}
               onModalChange={setSettingsModal}
             />
@@ -1178,20 +1180,11 @@ export function App() {
                     sort={sort}
                     opening={interaction.opening}
                     accounts={state.accounts}
-                    disabled={busy || syncing}
+                    sizeByImportance={appearance.sizeByImportance}
                     onOpen={openMail}
                     onSelect={setSelectedId}
                     onMenu={showMailMenu}
                     onMenuKey={mailMenuKey}
-                    onTrack={openTracking}
-                    onRead={markRead}
-                    onReply={(mail) => startCompose(mail)}
-                    onArchive={(mail) => void changeMessage(mail, "archive")}
-                    onSnooze={showSnooze}
-                    onUnsnooze={(mail) => void changeMessage(mail, "unsnooze")}
-                    reading={reading}
-                    onTrash={setTrashMail}
-                    trashUnavailable={trashUnavailable}
                   />
                 ) : (
                   <ListEmpty

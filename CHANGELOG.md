@@ -5,7 +5,7 @@
 - Allow the CI test step 12 minutes. The serial suite reached the 8-minute limit on hosted Intel macOS runners.
 - Move the Filters, privacy and Sender details buttons into the persistent toolbar, and put Inbox tabs, the cached-mail note and work-view controls on the same line as each pane title.
 - Give every pane header below the toolbar one 48px height and extend Transparency (Glass/Subtle) to the whole window with one shared tint over the toolbar and every working pane, transparent child panes, blurred sticky headings and brighter secondary text for built-in and custom themes.
-- Show Inbox tabs in the header as 32px segments with a bordered active pill, group Settings controls into rounded cards with labeled rows and rotating expanding groups, put the assistants Refresh beside "Your assistants", and run the section divider the full pane height.
+- Show Inbox tabs at full header height in secondary text with a 2px accent underline sliding under the active tab's content, group Settings controls into rounded cards with labeled rows and rotating expanding groups, put the assistants Refresh beside "Your assistants", and run the section divider the full pane height.
 - Stop MCP endpoint and token copies from locking mail actions or reloading state, removing the sidebar flicker while keeping the copied notice and clipboard fallback.
 - Bundle Inter Variable so Windows and Linux get the same interface typeface instead of falling back to Segoe UI.
 - Keep social icon rows and other `align="left"`/floated newsletter tables horizontal in formatted mail, and accept `display: inline-table`; hiding values stay rejected.
@@ -18,9 +18,12 @@
 
 - Keep tiny and zero-sized newsletter text wrappers readable without disturbing text flow, preserve image height caps in placeholders, and keep inline image status prose out of sender layouts.
 
-- Add Read, Snooze/Return to inbox, Reply, Archive and Pin beside Trash on each mail row. Use a raised 3D toolbar that follows built-in and custom themes, mode and accent. Keep row actions tied to their own email, with visible touch controls and the existing provider safeguards.
+- Replace the mail row action strip with a single More actions button on the selected or focused row (always visible without hover), opening the same context menu as right-click: Read, Snooze, Reply, Archive, Pin, Move to Trash and the work actions, keeping their provider safeguards.
+- Add Pick date and time… to the Snooze menu with an inline local time field (defaulting to tomorrow 9:00), future-time validation and Escape close.
+- Run mail rows edge to edge so hover and selected washes meet the pane dividers, and add Appearance's Size rows by importance switch (on by default) for uniform medium-height rows, also in Commands.
+- Move the app-update control into the toolbar flow between the pane tools and the window controls instead of floating over them.
 - Compact Projects into one navigation/action row with tasks before emails and decisions. Preserve failed decision input during recovery. Reduce empty Today groups and proposal spacing while keeping review controls explicit.
-- Expand closed mail lists and collapse optional conversation details. Hide confirmed-empty attachment/image sections and show snoozed return times in the reader. Row actions keep appearing over the row on hover, without reserving empty space.
+- Expand closed mail lists and collapse optional conversation details. Hide confirmed-empty attachment/image sections and show snoozed return times in the reader.
 - Retain unsaved templates and signatures across Settings navigation and close, removing disconnected-account signatures without losing other edits. Keep pending saves locked across navigation so older responses cannot replace newer changes. Reset section scrolling and reduce control spacing; distinguish unavailable draft counts from empty lists.
 - Give Today more room for the email, with compact task rows and collapsed details. Projects shows email rows, open tasks and decisions with an inline reader; adding a task keeps the selected project and closes any previous email.
 

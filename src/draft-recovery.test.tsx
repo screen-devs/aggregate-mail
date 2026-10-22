@@ -192,8 +192,9 @@ test("mounted drafts use encrypted HTTP persistence, recover edits and guard unc
 
     await click([...container.querySelectorAll<HTMLButtonElement>(".sidebar button")].find(button => button.textContent?.trim().startsWith("Inbox"))!);
     await click(container.querySelector<HTMLElement>(".row")!);
-    await settle(() => container.querySelector<HTMLButtonElement>('button[aria-label="Reply"]')?.disabled === false);
-    await click(container.querySelector<HTMLElement>('button[aria-label="Reply"]')!);
+    await click(container.querySelector<HTMLElement>(".mail-row .row-more")!);
+    await settle(() => !!container.querySelector('[role="menu"][aria-label="Message actions"]'));
+    await click([...container.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]')].find((item) => item.childNodes[0]?.textContent?.trim() === "Reply")!);
     await fill("textarea", "SYNTHETIC reply content");
     await settle(() => /Draft saved/.test(container.textContent!));
     const reply = store.all("draft")[0];

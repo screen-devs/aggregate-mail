@@ -159,11 +159,18 @@ async function mount(preferences?: NotificationPreferences, revisionContract = f
     return event;
   };
   const row = (id = "a:1:5") => container.querySelector<HTMLButtonElement>(`[id='mail-${id}']`)!;
-  const trash = (id = "a:1:5") => button("Move to Trash", row(id).parentElement!);
-  const toolbar = () => container.querySelector<HTMLElement>(".mail-actions") || container.querySelector<HTMLElement>(".row.selected")?.parentElement?.querySelector<HTMLElement>(".row-actions") || container.querySelector<HTMLElement>(".row-actions")!;
+  // A row's secondary actions live in its context menu, opened by the More actions button.
+  const rowMenu = async (id = "a:1:5") => {
+    const more = row(id).parentElement!.querySelector<HTMLButtonElement>('[aria-label="More actions"]')!;
+    assert.ok(more, `More actions for ${id}`);
+    await click(more);
+    return container.querySelector<HTMLElement>('[role="menu"][aria-label="Message actions"]')!;
+  };
+  const trash = async (id = "a:1:5") => button("Move to Trash", await rowMenu(id));
+  const toolbar = () => container.querySelector<HTMLElement>(".mail-actions")!;
   const dialog = () => container.querySelector<HTMLElement>('[role="dialog"]')!;
   return {
-    state, container, button, click, key, row, trash, toolbar, dialog, mutations, drafts, stateRequests, configured, audioCommands,
+    state, container, button, click, key, row, rowMenu, trash, toolbar, dialog, mutations, drafts, stateRequests, configured, audioCommands,
     resetGeneration: () => { generation = "replacement-generation"; },
     truncateState: (value: boolean) => { truncated = value; },
     notificationClick: async (id: string) => { await act(async () => notificationOpen?.(id)); },
@@ -209,15 +216,15 @@ test("selected and reader toolbars confirm reads immediately, coalesce opens and
   try {
     await app.click(app.row());
     assert.equal(app.mutations.length, 0, "selection alone never marks read");
-    assert.equal(app.toolbar().getAttribute("aria-label"), "Email row actions");
+    const menu = await app.rowMenu();
+    assert.equal(menu.getAttribute("aria-label"), "Message actions");
     assert.equal(app.container.querySelector("button button"), null);
     const read = app.holdRead();
-    await app.click(app.button("Mark as read", app.toolbar()));
-    const pending = app.button("Marking as read…", app.toolbar());
+    await app.click(app.button("Mark as read", menu));
+    const pending = app.button("Marking as read…", await app.rowMenu());
     assert.equal(pending.disabled, true);
-    assert.equal(pending.getAttribute("aria-busy"), "true");
-    assert.equal(pending.textContent, "", "row actions stay icon-only while the accessible name reports progress");
     assert.ok(app.row().classList.contains("unread"), "no success while pending");
+    await app.key("Escape", pending);
     await app.open();
     await app.key("Escape");
     await app.open();
@@ -261,15 +268,15 @@ test("pointer Snooze and keyboard Return to inbox use the local message action",
   const app = await mount();
   try {
     await app.click(app.row("b:1:5"));
-    await app.click(app.button("Snooze", app.toolbar()));
-    await app.activate(app.button("In one hour", app.container.querySelector('[role="menu"]')!));
+    await app.click(app.button("Snooze", await app.rowMenu("b:1:5")));
+    await app.activate(app.button("In one hour", app.container.querySelector('[role="menu"][aria-label="Snooze email"]')!));
     assert.deepEqual(app.mutations, [{ id: "b:1:5", action: "snooze" }]);
     assert.equal(app.container.querySelector(".toast-success .toast-text")?.textContent,
       `Email snoozed until ${new Date(app.state.messages.find((mail) => mail.id === "b:1:5")!.snoozedUntil!).toLocaleString()}.`);
     assert.equal(app.row("b:1:5"), null);
     assert.equal(app.state.messages.find((mail) => mail.id === "a:1:5")!.snoozedUntil, null);
     await app.click(app.button("Snoozed1"));
-    await app.activate(app.button("Return to inbox", app.toolbar()));
+    await app.activate(app.button("Return to inbox", await app.rowMenu("b:1:5")));
     assert.deepEqual(app.mutations.at(-1), { id: "b:1:5", action: "unsnooze" });
     assert.ok([...app.container.querySelectorAll(".toast-success")].some((toast) => toast.textContent?.includes("Email returned to inbox.")));
     assert.equal(app.state.messages.find((mail) => mail.id === "b:1:5")!.snoozedUntil, null);
@@ -278,8 +285,42 @@ test("pointer Snooze and keyboard Return to inbox use the local message action",
     assert.equal(app.container.querySelector('[role="menu"]')?.getAttribute("aria-label"), "Snooze email");
     await app.key("Escape");
     assert.equal(app.dialog(), null);
-    await app.click(app.button("Archive", app.toolbar()));
+    await app.click(app.button("Archive", await app.rowMenu()));
     assert.equal(app.mutations.at(-1)!.action, "archive");
+  } finally { await app.close(); }
+});
+
+test("the snooze menu accepts a custom future time, rejects a past one and closes on Escape", async () => {
+  const app = await mount();
+  try {
+    const localValue = (date: Date) =>
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` +
+      `T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    const menu = () => app.container.querySelector<HTMLElement>('[role="menu"][aria-label="Snooze email"]');
+    const submit = async (form: HTMLFormElement) => {
+      await act(async () => form.dispatchEvent(new app.container.ownerDocument.defaultView!.Event("submit", { bubbles: true, cancelable: true })));
+    };
+    await app.click(app.row());
+    await app.key("s");
+    await app.click(app.button("Pick date and time…", menu()!));
+    const input = menu()!.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
+    assert.ok(input, "the custom time field opens inside the snooze menu");
+    assert.equal(app.container.ownerDocument.activeElement, input, "focus moves to the time field");
+    const past = new Date(Date.now() - 3600000);
+    input.value = localValue(past);
+    await submit(input.closest("form")!);
+    assert.equal(app.mutations.length, 0, "a past time sends no request");
+    assert.equal(menu()!.querySelector('[role="alert"]')!.textContent, "Choose a time in the future.");
+    const future = new Date(Date.now() + 48 * 3600000); future.setMinutes(0, 0, 0);
+    input.value = localValue(future);
+    await submit(input.closest("form")!);
+    assert.deepEqual(app.mutations, [{ id: "a:1:5", action: "snooze" }]);
+    assert.equal(app.state.messages.find((mail) => mail.id === "a:1:5")!.snoozedUntil, future.getTime());
+    await app.click(app.row("b:1:5"));
+    await app.key("s");
+    await app.click(app.button("Pick date and time…", menu()!));
+    await app.key("Escape", menu()!.querySelector("input")!);
+    assert.equal(menu(), null, "Escape closes the menu from inside the form");
   } finally { await app.close(); }
 });
 
@@ -288,14 +329,13 @@ test("Trash confirmation is private, cancelable and keyboard accessible; success
   try {
     await app.click(app.button("Hide personal information"));
     await app.click(app.row());
-    await app.activate(app.trash());
+    await app.activate(await app.trash());
     assert.equal(app.mutations.length, 0);
     assert.doesNotMatch(app.dialog().outerHTML, /Private Reader|reader@example.com|sender@example.com/);
-    assert.doesNotMatch(app.toolbar().outerHTML, /Private Reader|reader@example.com/);
     await app.click(app.button("Cancel", app.dialog()));
     assert.equal(app.mutations.length, 0);
     assert.ok(app.row());
-    await app.click(app.trash());
+    await app.click(await app.trash());
     const cancel = app.button("Cancel", app.dialog());
     cancel.focus();
     const tab = await app.key("Tab", cancel, { shiftKey: true });
@@ -350,7 +390,7 @@ test("archived IMAP without Message-ID disables Trash with an accessible explana
     app.state.messages[0].messageId = undefined;
     await app.refresh();
     await app.click(app.button("Archive"));
-    const trash = app.trash();
+    const trash = await app.trash();
     assert.equal(trash.disabled, true);
     assert.match(trash.getAttribute("aria-description")!, /Message-ID is missing.*provider/);
     await app.click(trash);
@@ -359,18 +399,16 @@ test("archived IMAP without Message-ID disables Trash with an accessible explana
   } finally { await app.close(); }
 });
 
-test("row Trash targets an unselected email without opening or marking it read", async () => {
+test("row Trash targets the menu's own email without opening or marking it read", async () => {
   const app = await mount();
   try {
     await app.click(app.row("a:1:6"));
-    const trash = app.trash("b:1:5");
-    assert.ok(trash.querySelector("svg"));
-    assert.equal(trash.textContent, "");
-    assert.equal(trash.getAttribute("aria-label"), "Move to Trash");
+    const menu = await app.rowMenu("b:1:5");
+    const trash = app.button("Move to Trash", menu);
     assert.equal(app.container.querySelector("button button"), null);
     await app.activate(trash);
     assert.equal(app.container.querySelector(".message"), null);
-    assert.equal(app.row("a:1:6").getAttribute("aria-current"), "true");
+    assert.equal(app.row("b:1:5").getAttribute("aria-current"), "true", "opening the menu selects its row like right-click");
     assert.equal(app.mutations.length, 0);
     await app.click(app.button("Move to Trash", app.dialog()));
     assert.deepEqual(app.mutations, [{ id: "b:1:5", action: "trash" }]);
@@ -481,7 +519,7 @@ test("archive reports confirmed success even when inbox refresh fails", async ()
   try {
     await app.click(app.row());
     app.failRefresh(true);
-    await app.click(app.button("Archive", app.toolbar()));
+    await app.click(app.button("Archive", await app.rowMenu()));
     assert.equal(app.container.querySelector(".toast-success .toast-text")?.textContent, "Email archived.");
     assert.match(app.container.querySelector(".toast-error")?.textContent || "", /Email archived\. Inbox refresh failed/);
   } finally { await app.close(); }
@@ -519,8 +557,8 @@ test("pending and failed mail actions never publish success", async () => {
       }
       await app.click(app.row());
       const gate = app.holdAction(); app.failAction();
-      await app.click(app.button(action === "archive" ? "Archive" : action === "snooze" ? "Snooze" : "Return to inbox", app.toolbar()));
-      if (action === "snooze") await app.click(app.button("In one hour", app.container.querySelector('[role="menu"]')!));
+      await app.click(app.button(action === "archive" ? "Archive" : action === "snooze" ? "Snooze" : "Return to inbox", await app.rowMenu()));
+      if (action === "snooze") await app.click(app.button("In one hour", app.container.querySelector('[role="menu"][aria-label="Snooze email"]')!));
       assert.equal(app.container.querySelector(".toast-success"), null);
       await app.finish(gate);
       assert.equal(app.container.querySelector(".toast-success"), null);
@@ -554,7 +592,7 @@ test("mounted Notifications settings honor persisted choices, preview, changes, 
     assert.ok(app.container.querySelector(".toast-stack-top-right"));
     app.state.unreadArrivals = 2; await app.refresh();
     assert.equal(app.container.querySelector(".toast"), null);
-    await app.click(app.row()); await app.click(app.button("Archive", app.toolbar()));
+    await app.click(app.row()); await app.click(app.button("Archive", await app.rowMenu()));
     assert.equal(app.container.querySelector(".toast-success"), null);
     await app.click(app.button("Settings")); await app.click(app.button("Notifications"));
     let settings = app.container.querySelector<HTMLElement>('[aria-label="Notification settings"]')!;
@@ -592,7 +630,7 @@ test("mounted Notifications settings honor persisted choices, preview, changes, 
     await app.click(app.button("Close settings"));
     app.state.unreadArrivals = 4; await app.refresh();
     assert.equal([...app.container.querySelectorAll(".toast-info")].some((toast) => toast.textContent?.includes("new unread")), false);
-    await app.click(app.row("a:1:6")); await app.click(app.button("Archive", app.toolbar()));
+    await app.click(app.row("a:1:6")); await app.click(app.button("Archive", await app.rowMenu("a:1:6")));
     assert.ok(app.container.querySelector(".toast-success"), "reset re-enabled action confirmations");
   } finally { await app.close(); }
 });

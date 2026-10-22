@@ -9,32 +9,54 @@
 .mail-window-row { position: absolute; left: 0; width: 100%; display: flow-root; }
 .mail-window-date { position: absolute; left: 0; width: 100%; pointer-events: none; }
 .mail-window-date .group { top: 0; margin: 0; height: calc(var(--mail-group-height) * var(--text-scale, 1)); }
+/* Rows run edge to edge so hover and selected washes meet both pane dividers;
+   hairlines and text padding keep their insets. */
 .row {
   position: relative;
-  width: calc(100% - 12px);
-  margin: 1px 6px;
-  border-radius: var(--radius-control);
-  height: calc((var(--mail-row-medium) * var(--text-scale, 1)) - 2px);
+  width: 100%;
+  height: calc(var(--mail-row-medium) * var(--text-scale, 1));
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 18px;
   font-size: calc(14px * var(--text-scale, 1));
   transition: background-color 140ms var(--ease-out);
 }
 .mail-row:hover .row:not(.selected) {
   background: var(--hover);
 }
-.row-actions { position: absolute; top: 50%; right: 16px; transform: translateY(-50%); display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); background: var(--raised); border-radius: var(--radius-control); box-shadow: var(--edge); visibility: hidden; pointer-events: none; }
-.row-actions button { width: 28px; padding: 0; height: 28px; justify-content: center; border-radius: var(--radius-control); }
-.mail-row:hover .row-actions, .mail-row:has(:focus-visible) .row-actions { visibility: visible; pointer-events: auto; }
-.row-actions button:disabled { opacity: 0.4; }
-.mail-row:hover .row time, .mail-row:focus-within .row time { opacity: 0; }
-@media (hover: none) {
-  .mail-row { flex-direction: column; align-items: stretch; }
-  .row-actions { margin: 2px 6px; position: static; transform: none; visibility: visible; pointer-events: auto; flex-wrap: wrap; flex-shrink: 0; }
-  .row-actions button { min-width: 32px; min-height: 32px; }
-  .mail-row:hover .row time, .mail-row:focus-within .row time { opacity: 1; }
+/* One quiet overflow button at the row's right end, in place of the time. It
+   appears only on the selected row or while the row holds keyboard focus; on
+   no-hover devices it stays visible. */
+.row-more {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  color: var(--text-3);
+  visibility: hidden;
 }
+.row-more:hover {
+  background: var(--selected);
+  color: var(--text);
+}
+.mail-row:has(.row.selected) .row-more,
+.mail-row:focus-within .row-more {
+  visibility: visible;
+}
+.mail-row:has(.row.selected) .row time,
+.mail-row:focus-within .row time {
+  opacity: 0;
+}
+@media (hover: none) {
+  .row-more { visibility: visible; }
+  .row time { opacity: 0; }
+}
+.mail-row:has(.card) .row-more { top: 12px; transform: none; }
 /* Selection: an accent tint while the list has focus, a gray wash otherwise.
    Text keeps its own colors, so it reads with every accent and mode. */
 .row.selected {
@@ -64,7 +86,7 @@
   position: absolute;
   left: 46px;
   right: 12px;
-  bottom: -1px;
+  bottom: 0;
   height: 1px;
   background: var(--line);
   pointer-events: none;
@@ -81,8 +103,7 @@
   opacity: 0;
 }
 .row:focus-visible {
-  outline-offset: -1px;
-  border-radius: var(--radius-control);
+  outline-offset: -2px;
 }
 .avatar {
   position: relative;
@@ -210,18 +231,16 @@
   color: var(--text);
 }
 .row.stacked {
-  height: calc((var(--mail-row-high) * var(--text-scale, 1)) - 2px);
+  height: calc(var(--mail-row-high) * var(--text-scale, 1));
 }
 .stacked .row-text {
   gap: 2px;
 }
 .brief {
-  height: calc((var(--mail-row-low) * var(--text-scale, 1)) - 2px);
+  height: calc(var(--mail-row-low) * var(--text-scale, 1));
 }
 .compact .row {
-  height: calc((var(--mail-row-compact) * var(--text-scale, 1)) - 2px);
-  margin-top: 1px;
-  margin-bottom: 1px;
+  height: calc(var(--mail-row-compact) * var(--text-scale, 1));
   font-size: calc(13px * var(--text-scale, 1));
 }
 .brief .avatar,
@@ -249,13 +268,13 @@
 /* Beside the reader the list is narrow, so each row is a card: sender and
    time, the subject, then a preview for medium and high relevance. */
 .row.card {
-  height: calc((var(--mail-row-card-low) * var(--text-scale, 1)) - 2px);
+  height: calc(var(--mail-row-card-low) * var(--text-scale, 1));
   align-items: flex-start;
-  padding: 9px 12px 10px;
+  padding: 9px 18px 10px;
   font-size: calc(13px * var(--text-scale, 1));
 }
-.row.card.r2 { height: calc((var(--mail-row-card-medium) * var(--text-scale, 1)) - 2px); }
-.row.card.r3 { height: calc((var(--mail-row-card-high) * var(--text-scale, 1)) - 2px); }
+.row.card.r2 { height: calc(var(--mail-row-card-medium) * var(--text-scale, 1)); }
+.row.card.r3 { height: calc(var(--mail-row-card-high) * var(--text-scale, 1)); }
 .card .avatar {
   width: 28px;
   height: 28px;
@@ -286,18 +305,13 @@
   font-weight: 600;
 }
 .compact .row.card {
-  height: calc((var(--mail-row-card-compact) * var(--text-scale, 1)) - 2px);
-  padding: 6px 12px;
+  height: calc(var(--mail-row-card-compact) * var(--text-scale, 1));
+  padding: 6px 18px;
 }
 .compact .row.card .avatar {
   width: 22px;
   height: 22px;
   margin: 1px 10px 0 0;
-}
-.mail-row:has(.card) .row-trash {
-  top: 6px;
-  right: 12px;
-  transform: none;
 }
 .filter-menu {
   position: relative;
@@ -368,6 +382,3 @@
 .search-help[role="alert"] { color: var(--danger); }
 
 .list-pane { container-type: inline-size; }
-.row-actions button:hover:not(:disabled) { background: var(--selected); }
-
-@media (hover: hover) { .list:has(.mail-row:hover) .mail-row:not(:hover) .row-actions { visibility: hidden; pointer-events: none; } }

@@ -1522,7 +1522,7 @@ for (const reading of ["split", "full"] as const) test(`3000-row ${reading} App 
     assert.equal(app.container.querySelectorAll(".row").length, 1, "search considers all cached messages");
     const row = app.container.querySelector<HTMLElement>(".mail-row")!;
     await act(async () => row.dispatchEvent(new app.window.MouseEvent("mouseover", { bubbles: true })));
-    assert.ok(row.querySelector('[aria-label="Move to Trash"]'), "offscreen mail retains its action when reached");
+    assert.ok(row.querySelector('[aria-label="More actions"]'), "offscreen mail retains its action when reached");
   } finally { await app.close(); }
 });
 

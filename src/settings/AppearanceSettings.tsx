@@ -169,6 +169,8 @@ export function AppearanceSettings({ value, scheme, onChange, onPreview = noPrev
           <Segmented labelledBy="reading-label" value={value.reading} choices={readingLayouts}
             onChange={(reading) => onChange({ ...value, reading })} />
         </div>
+        <label className="settings-row"><span>Size rows by importance</span><input type="checkbox" role="switch" checked={value.sizeByImportance}
+          onChange={(event) => onChange({ ...value, sizeByImportance: event.target.checked })} /></label>
       </div>
       <p className="note">
         {glass ? "Transparency applies to the whole window. " : ""}

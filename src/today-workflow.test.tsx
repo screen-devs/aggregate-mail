@@ -134,7 +134,9 @@ async function mount(items: Commitment[] = [], fullReading = false) {
     if (twice) form.dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
   });
   const openQuick = async (id = "mail-a", details = true) => {
-    await click(sidebar("Inbox")); await click(button("Track work", document.getElementById(`mail-${id}`)!.parentElement!));
+    await click(sidebar("Inbox"));
+    await click(document.getElementById(`mail-${id}`)!.parentElement!.querySelector<HTMLElement>('[aria-label="More actions"]')!);
+    await click(button("Track work", container.querySelector('[role="menu"][aria-label="Message actions"]')!));
     const edit = [...container.querySelectorAll("button")].find((node) => node.textContent === "Edit details or add reminder");
     if (details && edit) await click(edit);
   };

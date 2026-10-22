@@ -46,6 +46,10 @@ export function Check(props: IconProps) {
   return <Outline {...props}><path d="m5 12 4 4L19 6" /></Outline>;
 }
 
+export function More(props: IconProps) {
+  return <Outline {...props}><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" /></Outline>;
+}
+
 export function Close(props: IconProps) {
   return <Outline {...props}><path d="m6 6 12 12M6 18 18 6" /></Outline>;
 }
