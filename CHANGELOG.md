@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep custom snooze forms inside the viewport as they grow, without moving focus out of the time input.
 - Remove the right-hand sender panel and its Sender details button.
 - Stack notices from their anchored edge with the newest nearest it, animate arrivals and dismissals so the stack slides instead of jumping, add a labeled Dismiss button, and stop the stack's scroll container from clipping notice shadows.
 - Allow the CI test step 12 minutes. The serial suite reached the 8-minute limit on hosted Intel macOS runners.
