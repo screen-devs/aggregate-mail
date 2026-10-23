@@ -33,12 +33,6 @@
     transform: translateY(-3px);
   }
 }
-@keyframes context-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-}
 @keyframes settings-in {
   from {
     opacity: 0;

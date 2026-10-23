@@ -1086,23 +1086,6 @@ test("retained compose preferences stay savable after disconnecting an account",
   } finally { await app.close(); }
 });
 
-test("sender details fold away and the choice survives a restart", async () => {
-  const app = await mount();
-  try {
-    assert.equal(app.container.querySelector(".context"), null);
-    await app.click(app.button("Sender details"));
-    assert.ok(app.container.querySelector(".context"));
-    await app.click(app.button("Sender details"));
-    assert.equal(app.container.querySelector(".context"), null);
-    assert.equal(app.storage.getItem("sender-panel"), "closed");
-  } finally { await app.close(); }
-  const restarted = await mount(false, (_state, storage) => storage.setItem("sender-panel", "closed"));
-  try {
-    assert.equal(restarted.container.querySelector(".context"), null);
-    assert.equal(restarted.button("Sender details").getAttribute("aria-pressed"), "false");
-  } finally { await restarted.close(); }
-});
-
 test("filters open as a popover that Escape closes, and the button stays lit while filtered", async () => {
   const app = await mount();
   try {
@@ -1672,6 +1655,7 @@ test('V2 compact toolbar, text size, page keys and drafts navigation', async () 
   try {
     assert.ok(ui.back().closest('.app-toolbar'), 'history belongs in the persistent toolbar');
     assert.equal(ui.container.querySelector('[aria-label="Sender context"]'), null);
+    assert.equal(ui.container.querySelector('[aria-label="Sender details"]'), null, "no sender panel toggle");
     await ui.click(ui.container.querySelector<HTMLElement>("[id='mail-a:1']")!);
     assert.equal(ui.container.querySelector('[aria-label="Selected email actions"]'), null);
     await ui.key('PageDown');
@@ -1692,7 +1676,7 @@ test('V2 compact toolbar, text size, page keys and drafts navigation', async () 
 test('pane tools live in the persistent toolbar and section controls share the title line', async () => {
   const ui = await mount();
   try {
-    for (const label of ["Filters", "Hide personal information", "Sender details"]) {
+    for (const label of ["Filters", "Hide personal information"]) {
       const control = ui.button(label);
       assert.ok(control.closest(".app-toolbar"), `${label} sits in the persistent toolbar`);
       assert.equal(control.closest(".main-head, .reader-head"), null, `${label} left the pane headers`);
@@ -1712,7 +1696,7 @@ test('pane tools live in the persistent toolbar and section controls share the t
     assert.equal(ui.container.querySelectorAll(".inbox-tabs").length, 1, "no separate tabs row");
     await ui.open("a:1");
     assert.ok(ui.container.querySelector(".reader-head"), "split layout shows the reader pane");
-    for (const label of ["Filters", "Hide personal information", "Sender details"])
+    for (const label of ["Filters", "Hide personal information"])
       assert.ok(ui.button(label).closest(".app-toolbar"), `${label} stays in the toolbar beside the reader`);
     assert.equal(ui.container.querySelector(".reader-head .pane-tools"), null, "reader head keeps no tool strip");
     await ui.input(ui.container.querySelector<HTMLInputElement>(".search input")!, "alpha");
@@ -1726,13 +1710,11 @@ test('pane tools live in the persistent toolbar and section controls share the t
     await ui.click(ui.button("Settings"));
     assert.ok(ui.button("Hide personal information").closest(".app-toolbar"), "privacy stays in the toolbar on Settings");
     assert.equal(ui.container.querySelector('[aria-label="Filters"]'), null, "Settings has no Filters");
-    assert.equal(ui.container.querySelector('[aria-label="Sender details"]'), null, "Settings has no Sender details");
     await ui.click(ui.button("Drafts"));
     assert.ok(ui.button("Hide personal information").closest(".app-toolbar"), "privacy stays in the toolbar on Drafts");
     assert.equal(ui.container.querySelector('[aria-label="Filters"]'), null, "Drafts has no Filters");
     await ui.click(ui.button("Agent review"));
     assert.equal(ui.container.querySelector('[aria-label="Filters"]'), null, "work views have no Filters");
-    assert.equal(ui.container.querySelector('[aria-label="Sender details"]'), null, "work views have no Sender details");
     assert.ok(ui.container.querySelector(".main-head .agent-navigation"), "agent sections sit inside the header");
     assert.ok(ui.container.querySelector(".main-head .work-controls"), "work controls sit inside the header");
   } finally { await ui.close(); }

@@ -42,7 +42,6 @@ import { MeetingDialog } from "./work/EventPanel";
 import { useWorkspace } from "./work/useWorkspace";
 import { openCommitment } from "../shared/commitment-dates";
 import { Reader, ReaderEmpty } from "./mail/Reader";
-import { SenderPanel } from "./mail/SenderPanel";
 import { tabName, viewNames, viewOrder, type View } from "./mail/format";
 import { customLabels, textSizeShortcut, filterMail, matchesLabel, markMailRead } from "./mail-ui";
 import { reuseMailState } from "./mail-state";
@@ -60,7 +59,7 @@ import { drawsWindowControls, systemCaption } from "./ui/TrafficLights";
 import { useMedia } from "./ui/useMedia";
 import { CredentialFallbackNotice } from "./shell/CredentialFallbackNotice";
 import { ToastStack, useToasts } from "./ui/Toasts";
-import { ArrowLeft, ArrowRight, Eye, EyeOff, PanelRight, SidebarIcon } from "./ui/icons";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, SidebarIcon } from "./ui/icons";
 
 // Direction the list pane enters from: tabs slide sideways, mail opens upward.
 type Motion = "forward" | "back" | "open" | "close";
@@ -243,17 +242,8 @@ export function App() {
   // the reader beside the list (mail then opens in place), then the sidebar.
   const roomy = useMedia("(min-width: 760px)");
   const splitRoom = useMedia("(min-width: 980px)");
-  const wide = useMedia("(min-width: 1180px)");
-  const wider = useMedia("(min-width: 1440px)");
   const split = appearance.reading === "split" && splitRoom && opened;
-  const senderRoom = split ? wider : wide;
   const sidebarShown = sidebarOpen && roomy;
-  const [senderPanel, setSenderPanel] = useState(() => localStorage.getItem("sender-panel") === "open");
-  const toggleSenderPanel = () => {
-    localStorage.setItem("sender-panel", senderPanel ? "closed" : "open");
-    setSenderPanel(!senderPanel);
-  };
-  const contextShown = !settings && !workView && view !== "drafts" && senderPanel && senderRoom;
   const [textScale, setTextScale] = useState(() => {
     const value = Number(localStorage.getItem("emc2.text-scale"));
     return Number.isFinite(value) && value >= 0.8 && value <= 1.5 ? value : 1;
@@ -274,7 +264,6 @@ export function App() {
     }).catch(() => setNotice("Desktop notification settings are unavailable."));
   }, [notifications, privacy, setNotice]);
   const [loaded, setLoaded] = useState(false);
-  const [recent, setRecent] = useState<string[]>([]);
   const csrf = useRef("");
   const pendingReads = useRef(new Set<string>());
   const [reading, setReading] = useState(new Set<string>());
@@ -577,9 +566,6 @@ export function App() {
   const openMail = (mail: Mail, context: Partial<MailLocation> = {}) => {
     if (navigationBlocked || settings) return;
     navigation.update((current) => ({ ...current, ...context, selectedId: mail.id, opened: true }));
-    setRecent((ids) =>
-      [mail.id, ...ids.filter((id) => id !== mail.id)].slice(0, 6),
-    );
     markRead(mail);
   };
   const openReaderMail = (mail: Mail | undefined) => {
@@ -801,15 +787,7 @@ export function App() {
     window.addEventListener("beforeunload", handle);
     return () => window.removeEventListener("beforeunload", handle);
   }, [compose]);
-  const senderMail = selected
-    ? state.messages
-        .filter((m) => m.address === selected.address)
-        .sort((a, b) => b.date - a.date)
-    : [];
   const workPrivateNames = useMemo(() => [...new Set(state.messages.flatMap((mail) => collectPrivateNames(state.accounts, mail)))], [state.accounts, state.messages]);
-  const recentMail = recent
-    .map((id) => state.messages.find((m) => m.id === id))
-    .filter((m): m is Mail => !!m);
 
   // Pick the entrance once per pane so re-renders never restart its animation.
   // Beside the reader, the list keeps its pane while mail opens and closes.
@@ -891,17 +869,6 @@ export function App() {
       onClick={togglePrivacy}
     >
       {privacy ? <EyeOff color="currentColor" size={15} /> : <Eye color="currentColor" size={15} />}
-    </button>
-  );
-  const senderToggle = senderRoom && (
-    <button
-      className={senderPanel ? "icon on" : "icon"}
-      aria-label="Sender details"
-      aria-pressed={senderPanel}
-      title={senderPanel ? "Hide sender details" : "Show sender details"}
-      onClick={toggleSenderPanel}
-    >
-      <PanelRight color="currentColor" size={15} />
     </button>
   );
   const actions = selected && (
@@ -1058,7 +1025,6 @@ export function App() {
                   onReset={resetListControls}
                 />}
                 {privacyButton}
-                {!settings && view !== "drafts" && !workView && senderToggle}
               </div>
               <div className="update-spacer" aria-hidden="true" />
             </PaneHeader>
@@ -1213,19 +1179,6 @@ export function App() {
                   </div>
                 </div>
               </section>
-            )}
-            {contextShown && (
-              <aside className="context" aria-label="Sender context">
-                <PaneHeader className="context-head" corner={null} maximized={maximized} />
-                <SenderPanel
-                  selected={selected}
-                  account={selectedAccount}
-                  tab={selected ? tabName(tabOf(selected)) : ""}
-                  senderMail={senderMail}
-                  recentMail={recentMail}
-                  onJump={jumpTo}
-                />
-              </aside>
             )}
           </main>
         )}

@@ -113,6 +113,14 @@
   height: 22px;
   margin-right: 10px;
 }
+.avatar-logo {
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  border-radius: 50%;
+  background: #ededed;
+  object-fit: contain;
+}
 .avatar-letter {
   width: 100%;
   height: 100%;

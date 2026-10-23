@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Remove the right-hand sender panel and its Sender details button.
 - Stack notices from their anchored edge with the newest nearest it, animate arrivals and dismissals so the stack slides instead of jumping, add a labeled Dismiss button, and stop the stack's scroll container from clipping notice shadows.
 - Allow the CI test step 12 minutes. The serial suite reached the 8-minute limit on hosted Intel macOS runners.
 - Move the Filters, privacy and Sender details buttons into the persistent toolbar, and put Inbox tabs, the cached-mail note and work-view controls on the same line as each pane title.

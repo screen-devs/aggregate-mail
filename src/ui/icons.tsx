@@ -126,10 +126,6 @@ export function Reply(props: IconProps) {
   return <Outline {...props}><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></Outline>;
 }
 
-export function PanelRight(props: IconProps) {
-  return <Outline {...props}><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M15 4v16" /></Outline>;
-}
-
 export function Plus(props: IconProps) {
   return <Outline {...props}><path d="M12 5v14M5 12h14" /></Outline>;
 }

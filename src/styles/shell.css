@@ -313,7 +313,6 @@
   overflow-x: hidden;
 }
 .list,
-.context,
 .settings,
 .dialog,
 .dropdown-menu,
@@ -385,8 +384,8 @@
 .app-toolbar .mail-navigation { flex: 0 0 auto; padding: 0; border: 0; gap: 2px; }
 .app-toolbar .mail-navigation button { width: 28px; height: 30px; padding: 0; justify-content: center; }
 /* Every pane header under the top bar shares one height so its bottom
-   hairline runs continuously across list, reader and sender panes. */
-.main-head, .reader-head, .context-head { height: var(--subhead-height); min-height: var(--subhead-height); }
+   hairline runs continuously across list and reader panes. */
+.main-head, .reader-head { height: var(--subhead-height); min-height: var(--subhead-height); }
 /* Secondary controls share the title line: category tabs, cached-mail notes
    and each work view's controls. */
 .main-head .inbox-tabs { flex: 1; min-width: 0; align-self: stretch; margin-left: 12px; }

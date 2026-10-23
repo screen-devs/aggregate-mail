@@ -156,7 +156,7 @@
   background: var(--pane-glass);
 }
 :root[data-glass] :is(.app-toolbar, .list-pane, .reader-pane, .settings-pane,
-  .context, .work-pane, .drafts-pane, .workspace) {
+  .work-pane, .drafts-pane, .workspace) {
   background: transparent;
 }
 /* Sticky surfaces get a stronger tint plus a blur so scrolled text does not
