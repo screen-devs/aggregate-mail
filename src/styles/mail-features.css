@@ -7,8 +7,9 @@
 .command-option kbd, .command-empty { color: var(--text-3); font-size: calc(12px * var(--text-scale, 1)); }
 .command-empty { padding: 12px 10px; }
 /* Notices stack from the anchored edge, newest nearest it. Padding leaves room
-   for shadows inside the viewport-bounded scroll container. */
-.toast-stack { --toast-from: 8px; position: fixed; z-index: 20; right: 0; bottom: 0; width: min(440px, 100vw); max-height: calc(100dvh - 44px); overflow-y: auto; padding: 20px; display: flex; flex-direction: column; pointer-events: auto; }
+   for shadows inside the viewport-bounded scroll container; clicks there pass
+   through, while wheel input over a notice still scrolls the stack. */
+.toast-stack { --toast-from: 8px; position: fixed; z-index: 20; right: 0; bottom: 0; width: min(440px, 100vw); max-height: calc(100dvh - 44px); overflow-y: auto; padding: 20px; display: flex; flex-direction: column; pointer-events: none; }
 .toast-stack:empty { display: none; }
 .toast-stack-bottom-center { right: auto; left: 50%; transform: translateX(-50%); }
 .toast-stack-top-right { --toast-from: -8px; bottom: auto; top: 44px; flex-direction: column-reverse; }

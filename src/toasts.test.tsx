@@ -12,7 +12,8 @@ test("notice stacks scroll within both viewport anchors with room for shadows an
   const stack = rule(".toast-stack");
   assert.match(stack, /max-height:\s*calc\(100dvh - 44px\)/);
   assert.match(stack, /overflow-y:\s*auto/);
-  assert.match(stack, /pointer-events:\s*auto/, "wheel input reaches padding between notices");
+  assert.match(stack, /pointer-events:\s*none/, "clicks in the padding reach mail controls underneath");
+  assert.match(rule(".toast"), /pointer-events:\s*auto/, "notices take clicks and wheel input, which scrolls the stack");
   assert.match(stack, /padding:\s*20px/, "shadows have room inside the scroll container");
   assert.match(stack, /bottom:\s*0/);
   assert.match(stack, /flex-direction:\s*column/);
