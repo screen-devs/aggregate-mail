@@ -2,8 +2,31 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act } from "react";
 import { JSDOM } from "jsdom";
+import { readFileSync } from "node:fs";
 import { PrivacyContext } from "./ui/Privacy";
 import { ToastStack, useToasts } from "./ui/Toasts";
+
+test("notice stacks scroll within both viewport anchors with room for shadows and animations", () => {
+  const css = readFileSync(new URL("./styles/mail-features.css", import.meta.url), "utf8");
+  const rule = (selector: string) => css.slice(css.indexOf(`${selector} {`)).split("}")[0];
+  const stack = rule(".toast-stack");
+  assert.match(stack, /max-height:\s*calc\(100dvh - 44px\)/);
+  assert.match(stack, /overflow-y:\s*auto/);
+  assert.match(stack, /pointer-events:\s*auto/, "wheel input reaches padding between notices");
+  assert.match(stack, /padding:\s*20px/, "shadows have room inside the scroll container");
+  assert.match(stack, /bottom:\s*0/);
+  assert.match(stack, /flex-direction:\s*column/);
+  assert.match(rule(".toast-stack:empty"), /display:\s*none/, "empty padding does not block mail controls");
+  const top = rule(".toast-stack-top-right");
+  assert.match(top, /bottom:\s*auto/);
+  assert.match(top, /top:\s*44px/, "padding leaves the first notice below the toolbar");
+  assert.match(top, /flex-direction:\s*column-reverse/);
+  assert.match(rule(".toast-stack-bottom-center"), /translateX\(-50%\)/);
+  assert.match(rule(".toast-slot"), /flex-shrink:\s*0/, "multiline notices retain their full scrollable height");
+  assert.match(rule(".toast-heading"), /flex-shrink:\s*0/, "the count and Dismiss all remain scrollable");
+  assert.match(css, /animation: toast-slot-in 200ms/);
+  assert.match(css, /\.toast-slot\.leaving\s*\{\s*grid-template-rows: 0fr/);
+});
 
 test("toasts queue without dropping errors, deduplicate, redact, pause expiry and dismiss", async (context) => {
   const dom = new JSDOM('<button id="opener">Mail</button><div id="root"></div>');

@@ -3,10 +3,10 @@
 ## Unreleased
 
 - Keep custom snooze forms inside the viewport as they grow, without moving focus out of the time input.
-- Remove the right-hand sender panel and its Sender details button.
-- Stack notices from their anchored edge with the newest nearest it, animate arrivals and dismissals so the stack slides instead of jumping, add a labeled Dismiss button, and stop the stack's scroll container from clipping notice shadows.
+- Remove the right-hand sender panel and its toolbar toggle.
+- Stack notices from their anchored edge with the newest nearest it, animate arrivals and dismissals, and add a labeled Dismiss button. Keep multiline notices and the count line reachable in a viewport-bounded scroll area with padding for shadows.
 - Allow the CI test step 12 minutes. The serial suite reached the 8-minute limit on hosted Intel macOS runners.
-- Move the Filters, privacy and Sender details buttons into the persistent toolbar, and put Inbox tabs, the cached-mail note and work-view controls on the same line as each pane title.
+- Move the Filters and privacy buttons into the persistent toolbar, and put Inbox tabs, the cached-mail note and work-view controls on the same line as each pane title.
 - Give every pane header below the toolbar one 48px height and extend Transparency (Glass/Subtle) to the whole window with one shared tint over the toolbar and every working pane, transparent child panes, blurred sticky headings and brighter secondary text for built-in and custom themes.
 - Show Inbox tabs at full header height in secondary text with a 2px accent underline sliding under the active tab's content, group Settings controls into rounded cards with labeled rows and rotating expanding groups, put the assistants Refresh beside "Your assistants", and run the section divider the full pane height.
 - Stop MCP endpoint and token copies from locking mail actions or reloading state, removing the sidebar flicker while keeping the copied notice and clipboard fallback.
@@ -51,7 +51,7 @@
 - Approving an agent reply now saves it to Drafts and opens it in the composer. Nothing is sent until the user presses Send. Remove the now-unused Allow sending replies switch.
 - Hide account addresses in the composer From list in privacy mode and drop raw image-link placeholders from mail previews.
 - Document required bounded verification on shared Linux hosts, workflow failure cases and artifact-bound installed smoke checks. Keep synthetic, installed and real-account acceptance separate.
-- Keep assistant setup in Settings and proposed actions in Agent review. Move history controls beside search, start sender context closed and remove duplicate selected-email action bars.
+- Keep assistant setup in Settings and proposed actions in Agent review. Move history controls beside search and remove duplicate selected-email action bars.
 - Show Drafts as a searchable account-filtered list with sender, recipients, subject, preview, attachments and saved time. Preserve privacy and unknown-send warnings.
 - Anchor Snooze presets at the clicked control and show active snoozes in Calendar. Add text-size shortcuts and Page Up/Down email navigation. Keep reply context visible and accept validated attachment drops.
 - Make notification previews respect enabled delivery, details, privacy and sound, with a compact settings summary.
@@ -134,7 +134,7 @@
 
 - Keep disabled row Trash buttons hidden until hover or keyboard focus so they cannot overlap mail timestamps during sync. Preserve always-visible actions on touch devices.
 - Add custom themes in Settings, Appearance with light and dark palettes, background/accent generation, advanced color controls and live preview. Create, edit, duplicate, export and import Emc² JSON themes; confirm deletion and restore the previous appearance on Cancel. Save the theme library and selection together on this device, retaining the editor if storage fails.
-- Extend window transparency through the mail list, reader, sender panel and Settings, with a stronger neutral tint in light mode. Keep foreground text sharp and Off opaque.
+- Extend window transparency through the mail list, reader and Settings, with a stronger neutral tint in light mode. Keep foreground text sharp and Off opaque.
 - Put Drafts directly below New message in the sidebar and Settings beside Sync as a gear icon.
 - Keep the theme picker above the accent swatches by limiting the fixed stacked-row height to mail rows.
 

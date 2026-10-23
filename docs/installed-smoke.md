@@ -70,7 +70,7 @@ fixtures separate from saved accounts. A read-only fixture cannot prove writes.
 | ID | Actions | Required observation |
 | --- | --- | --- |
 | connect | Add account → provider → cancel; use a synthetic provider adapter for success/failure branches | Correct fields and help; cancel preserves accounts; successful fixture connection appears once |
-| read | Inbox → search a known subject → open result → Back → Forward | Exact message opens; context returns; one row-action group; sender panel initially closed |
+| read | Inbox → search a known subject → open result → Back → Forward | Exact message opens; context returns; one row-action group; sender identity stays in the reader header with no separate panel |
 | rename | Settings → Accounts → rename synthetic account → Save → leave and reopen | New name persists in both Settings and sidebar; cancel and failed-save paths retain correct values |
 | snooze | Click row Snooze → Tomorrow morning → Snoozed → Calendar | Menu stays at clicked control; one save; same email/time appears in both views; unsnooze removes both entries |
 | drafts | New message → enter synthetic recipient/subject/body → Keep draft → Drafts → open draft | Count and row details match; exact content recovers; no send; repeat after restart |
