@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep custom snooze forms inside the viewport as they grow, without moving focus out of the time input.
 - Allow the CI test step 12 minutes. The serial suite reached the 8-minute limit on hosted Intel macOS runners.
 - Move the Filters, privacy and Sender details buttons into the persistent toolbar, and put Inbox tabs, the cached-mail note and work-view controls on the same line as each pane title.
 - Give every pane header below the toolbar one 48px height and extend Transparency (Glass/Subtle) to the whole window with one shared tint over the toolbar and every working pane, transparent child panes, blurred sticky headings and brighter secondary text for built-in and custom themes.

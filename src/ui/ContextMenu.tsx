@@ -42,10 +42,18 @@ export function ContextMenu({ x, y, anchor, actions, onClose, label = "Message a
   useLayoutEffect(() => {
     const menu = root.current;
     if (!menu) return;
-    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8))}px`;
-    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8))}px`;
-    menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
+    const clamp = () => {
+      menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8))}px`;
+      menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8))}px`;
+    };
+    clamp();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(clamp);
+    observer?.observe(menu);
+    return () => observer?.disconnect();
   }, [x, y]);
+  useLayoutEffect(() => {
+    root.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
     const away = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) onClose();
