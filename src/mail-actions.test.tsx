@@ -153,6 +153,8 @@ async function mount(preferences?: NotificationPreferences, revisionContract = f
     return found;
   };
   const click = async (target: HTMLElement) => { await act(async () => target.click()); };
+  // Dismissed notices stay mounted for their 200ms exit animation.
+  const exit = async () => { await act(async () => new Promise((resolve) => setTimeout(resolve, 250))); };
   const key = async (key: string, target: EventTarget = dom.window, options: KeyboardEventInit = {}) => {
     const event = new dom.window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options });
     await act(async () => target.dispatchEvent(event));
@@ -170,7 +172,7 @@ async function mount(preferences?: NotificationPreferences, revisionContract = f
   const toolbar = () => container.querySelector<HTMLElement>(".mail-actions")!;
   const dialog = () => container.querySelector<HTMLElement>('[role="dialog"]')!;
   return {
-    state, container, button, click, key, row, rowMenu, trash, toolbar, dialog, mutations, drafts, stateRequests, configured, audioCommands,
+    state, container, button, click, exit, key, row, rowMenu, trash, toolbar, dialog, mutations, drafts, stateRequests, configured, audioCommands,
     resetGeneration: () => { generation = "replacement-generation"; },
     truncateState: (value: boolean) => { truncated = value; },
     notificationClick: async (id: string) => { await act(async () => notificationOpen?.(id)); },
@@ -620,6 +622,7 @@ test("mounted Notifications settings honor persisted choices, preview, changes, 
     app.state.unreadArrivals = 3; await app.refresh();
     assert.ok([...app.container.querySelectorAll(".toast-info")].some((toast) => toast.textContent?.includes("1 new unread email.")));
     for (const dismiss of [...app.container.querySelectorAll<HTMLButtonElement>(".toast-info button")]) await app.click(dismiss);
+    await app.exit();
     await app.click(app.button("Settings"));
     settings = app.container.querySelector<HTMLElement>('[aria-label="Notification settings"]')!;
     switches = settings.querySelectorAll<HTMLInputElement>('input[role="switch"]');
@@ -643,18 +646,18 @@ test("App routes persisted and changed durations to mounted preview notices", as
     await app.click(app.button("Settings")); await app.click(app.button("Notifications"));
     await app.click(app.button("Preview notification"));
     await tick(2999); assert.ok(app.container.querySelector(".toast-info"));
-    await tick(1); assert.equal(app.container.querySelector(".toast-info"), null);
+    await tick(1); await tick(200); assert.equal(app.container.querySelector(".toast-info"), null);
     const changeDuration = async (value: string) => {
       await app.click(app.button(value === "0" ? "Until dismissed" : `${Number(value) / 1000} seconds`));
     };
     await changeDuration("10000");
     await app.click(app.button("Preview notification"));
     await tick(9999); assert.ok(app.container.querySelector(".toast-info"));
-    await tick(1); assert.equal(app.container.querySelector(".toast-info"), null);
+    await tick(1); await tick(200); assert.equal(app.container.querySelector(".toast-info"), null);
     await changeDuration("0"); await app.click(app.button("Preview notification"));
     await tick(100000); assert.ok(app.container.querySelector(".toast-info"));
-    await app.click(app.button("Dismiss notification"));
-    assert.equal(app.container.querySelector(".toast-info"), null);
+    await app.click(app.button("Dismiss"));
+    await tick(200); assert.equal(app.container.querySelector(".toast-info"), null);
   } finally { await app.close(); context.mock.timers.reset(); }
 });
 
@@ -711,6 +714,7 @@ test("accepted arrival IDs drive private-safe toasts and exact reader navigation
     await app.click(app.button("Open email", app.container.querySelector(".toast-info")!));
     assert.ok(app.container.querySelector(".message"));
     assert.deepEqual(app.mutations, [{ id: target.id, action: "read" }]);
+    await app.exit();
     await app.click(app.button("Open email", app.container.querySelector(".toast-info")!));
     assert.match(app.container.querySelector(".toast-error")!.textContent!, /no longer available/);
     assert.equal(app.mutations.length, 1, "missing target never falls back to another email");
@@ -786,6 +790,7 @@ test("delayed pruned snapshots keep removed details out of toasts and preserve s
       assert.equal(generic.querySelector(".toast-open"), null, "count fallback has no stale target");
       const exact = [...toasts].find((toast) => toast.textContent?.includes("Surviving sender"))!;
       await app.click(app.button("Open email", exact));
+      await app.exit();
       assert.deepEqual(app.mutations, [{ id: survivor.id, action: "read" }]);
       await app.notificationClick(removed.id);
       assert.match(app.container.querySelector(".toast-error")!.textContent!, /no longer available/);

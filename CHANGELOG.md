@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Stack notices from their anchored edge with the newest nearest it, animate arrivals and dismissals so the stack slides instead of jumping, add a labeled Dismiss button, and stop the stack's scroll container from clipping notice shadows.
 - Allow the CI test step 12 minutes. The serial suite reached the 8-minute limit on hosted Intel macOS runners.
 - Move the Filters, privacy and Sender details buttons into the persistent toolbar, and put Inbox tabs, the cached-mail note and work-view controls on the same line as each pane title.
 - Give every pane header below the toolbar one 48px height and extend Transparency (Glass/Subtle) to the whole window with one shared tint over the toolbar and every working pane, transparent child panes, blurred sticky headings and brighter secondary text for built-in and custom themes.

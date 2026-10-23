@@ -36,7 +36,8 @@ test("toasts queue without dropping errors, deduplicate, redact, pause expiry an
     await tick(2000);
     const first = document.querySelector(".toast")!;
     await act(async () => first.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true })));
-    await tick(5000);
+    // Mock ticks jump the clock before running timers, so exit timers start at the end of each tick.
+    await tick(5000); await tick(200);
     assert.ok(notices.toasts.some((toast) => toast.kind === "success"));
     assert.equal(document.querySelectorAll('[role="alert"]').length, 2);
     await act(async () => first.dispatchEvent(new dom.window.MouseEvent("mouseout", { bubbles: true })));
@@ -45,10 +46,19 @@ test("toasts queue without dropping errors, deduplicate, redact, pause expiry an
     await tick(5000); assert.ok(document.body.contains(first));
     await act(async () => document.getElementById("opener")!.focus());
     await tick(3999); assert.ok(document.body.contains(first));
+    await tick(1);
+    const slot = first.closest(".toast-slot")!;
+    assert.ok(slot.classList.contains("leaving") && slot.hasAttribute("inert"), "an expired notice animates out before it unmounts");
+    await tick(199); assert.ok(document.body.contains(first));
     await tick(1); assert.equal(document.body.contains(first), false);
-    await tick(10000); assert.equal(notices.toasts.length, 2);
-    await act(async () => (document.querySelector(".toast button") as HTMLButtonElement).click());
-    assert.equal(notices.toasts.length, 1);
+    await tick(10000); await tick(200); assert.equal(notices.toasts.length, 2);
+    const dismissButton = document.querySelector<HTMLButtonElement>(".toast .toast-dismiss")!;
+    assert.equal(dismissButton.textContent, "Dismiss");
+    await act(async () => dismissButton.click());
+    await act(async () => dismissButton.click());
+    assert.equal(notices.toasts.length, 2, "Dismiss waits for the exit animation");
+    await tick(200);
+    assert.equal(notices.toasts.length, 1, "a repeated click dismisses only once");
     assert.equal(document.querySelector('[role="alert"]')!.textContent, "Uncertain delivery");
     await act(async () => {
       notices.push("1 new unread email.", "info", "arrival:1");
@@ -58,6 +68,8 @@ test("toasts queue without dropping errors, deduplicate, redact, pause expiry an
     assert.equal(notices.toasts.length, 3, "distinct arrivals survive text deduplication; repeated event stays silent");
     assert.equal(document.querySelector(".toast-heading span")!.textContent, "3 notifications");
     await act(async () => (document.querySelector(".toast-heading button") as HTMLButtonElement).click());
+    assert.equal(document.querySelectorAll(".toast-slot.leaving").length, 3);
+    await tick(200);
     assert.equal(notices.toasts.length, 0, "Dismiss all clears only in-app notices");
   } finally {
     await act(async () => root.unmount()); context.mock.timers.reset(); dom.window.close();
@@ -89,9 +101,9 @@ test("configured durations, no expiry, permanent errors and filtering survive pr
     preferences = { ...preferences, duration: 10000 }; await render();
     await act(async () => notices.push("Ten seconds"));
     await tick(1999); assert.equal(notices.toasts.length, 2);
-    await tick(1); assert.deepEqual(notices.toasts.map((toast) => toast.text), ["Ten seconds"]);
-    await tick(7999); assert.equal(notices.toasts.length, 1);
-    await tick(1); assert.equal(notices.toasts.length, 0);
+    await tick(1); await tick(200); assert.deepEqual(notices.toasts.map((toast) => toast.text), ["Ten seconds"]);
+    await tick(7800); assert.equal(notices.toasts.length, 1);
+    await tick(200); assert.equal(notices.toasts.length, 0);
     preferences = { ...preferences, duration: 0, confirmations: false, newMail: false }; await render();
     await act(async () => {
       notices.push("Hidden arrival", "info", "arrival:1"); notices.push("Hidden success", "success");
@@ -103,7 +115,7 @@ test("configured durations, no expiry, permanent errors and filtering survive pr
     assert.deepEqual(notices.toasts.map((toast) => toast.text), ["Preview", "Delivery uncertain"]);
     await act(async () => notices.dismiss(notices.toasts[0].id));
     await act(async () => notices.push("Ordinary info"));
-    await tick(3000);
+    await tick(3000); await tick(200);
     assert.deepEqual(notices.toasts.map((toast) => toast.text), ["Delivery uncertain"]);
     assert.equal(document.querySelector('[role="alert"]')?.textContent, "Delivery uncertain");
   } finally {
